@@ -401,9 +401,9 @@ Built on the shoulders of giants:
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/world-model-mcp/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/world-model-mcp/discussions)
-- **Documentation**: [Full Docs](https://github.com/yourusername/world-model-mcp/wiki)
+- **Issues**: [GitHub Issues](https://github.com/SaravananJaichandar/world-model-mcp/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/SaravananJaichandar/world-model-mcp/discussions)
+- **Documentation**: [Full Docs](https://github.com/SaravananJaichandar/world-model-mcp/wiki)
 
 ---
 
