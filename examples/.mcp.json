@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "world_model": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "world_model_server.server"],
+      "env": {
+        "WORLD_MODEL_DB_PATH": "${CLAUDE_PROJECT_DIR}/.claude/world-model/",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}
