@@ -17,7 +17,7 @@ Thank you for your interest in contributing to World Model MCP! This document pr
 
 ```bash
 # Fork the repository on GitHub, then clone your fork
-git clone https://github.com/YOUR_USERNAME/world-model-mcp.git
+git clone https://github.com/SaravananJaichandar/world-model-mcp.git
 cd world-model-mcp
 
 # Add upstream remote
