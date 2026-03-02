@@ -1,10 +1,11 @@
 # World Model MCP
 
-**A production-ready MCP server that builds a "world model" for your codebase, preventing hallucinations, repeated mistakes, and regressions in Claude Code.**
+**An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
+
+> **Status: Alpha (v0.1.0)** -- Core knowledge graph and MCP tools work. Hooks pipeline and learning loop are functional but early-stage. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-93%25%20passing-brightgreen.svg)](./tests/)
 
 ---
 
@@ -12,9 +13,9 @@
 
 World Model MCP creates a **temporal knowledge graph** of your codebase that learns from every Claude Code session to:
 
-- ✅ **Prevent Hallucinations** - Validates API/function references before use (90% reduction)
-- ✅ **Stop Repeated Mistakes** - Learns from corrections, never repeats the same error
-- ✅ **Reduce Regressions** - Tracks bug fixes and warns about re-breaking them
+- **Prevent Hallucinations** - Validates API/function references against known entities before use
+- **Stop Repeated Mistakes** - Learns constraints from corrections, applies them in future sessions
+- **Reduce Regressions** - Tracks bug fixes and warns when changes touch critical regions
 
 Think of it as giving Claude a **long-term memory** of your project.
 
@@ -65,7 +66,7 @@ After:
 const user = await User.findOne({ email }); // ✅ Verified to exist
 ```
 
-**Result**: 90% reduction in non-existent API references
+**Goal**: Reduce non-existent API references by validating against the knowledge graph
 
 ### 2. **Learning from Corrections**
 
@@ -86,7 +87,7 @@ logger.debug('debug info');
 logger.debug('debug info'); // ✅ No correction needed!
 ```
 
-**Result**: Zero repeated violations after first correction
+**Goal**: Learned patterns persist across sessions and prevent repeat violations
 
 ### 3. **Regression Prevention**
 
@@ -101,7 +102,7 @@ if (user && user.email) { ... }
 // Result: Bug not re-introduced ✅
 ```
 
-**Result**: 80%+ regression detection before code execution
+**Goal**: Detect potential regressions before code execution
 
 ---
 
@@ -155,7 +156,7 @@ if (user && user.email) { ... }
 
 ## 🛠️ MCP Tools
 
-Six production-ready tools available to Claude Code:
+Six MCP tools available to Claude Code:
 
 ### 1. `query_fact`
 Check if APIs/functions exist before using them
@@ -226,13 +227,7 @@ result = get_related_bugs(
 
 ---
 
-## 🧪 Testing
-
-**Test Results (v0.1.0)**:
-- ✅ 93% overall pass rate (13/14 tests)
-- ✅ 100% entity extraction accuracy
-- ✅ 100% constraint learning success
-- ✅ All performance targets met
+## Testing
 
 ```bash
 # Run tests
@@ -242,13 +237,7 @@ pytest
 pytest --cov=world_model_server --cov-report=html
 ```
 
-**Performance Benchmarks**:
-| Operation | p50 | p95 | Target |
-|-----------|-----|-----|--------|
-| Entity creation | 5ms | 10ms | ✅ <50ms |
-| Fact query (FTS5) | 15ms | 50ms | ✅ <100ms |
-| Constraint lookup | 8ms | 20ms | ✅ <100ms |
-| LLM extraction | 120ms | 200ms | ✅ <500ms |
+Tests cover knowledge graph CRUD operations, FTS5 search, constraint management, and bug tracking. See [tests/](./tests/) for details.
 
 ---
 
@@ -361,17 +350,15 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-## 📊 Stats
+## Stats
 
 **Project Size**:
 - ~3,500 lines of code
 - 11 Python modules
 - 3 TypeScript hook implementations
-- 93% test coverage
 
 **Storage Efficiency**:
 - Empty database: ~155 KB
-- Per 1000 sessions: ~5 MB
 - Per entity: ~500 bytes
 - Per fact: ~800 bytes
 
@@ -403,7 +390,6 @@ Built on the shoulders of giants:
 
 - **Issues**: [GitHub Issues](https://github.com/SaravananJaichandar/world-model-mcp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/SaravananJaichandar/world-model-mcp/discussions)
-- **Documentation**: [Full Docs](https://github.com/SaravananJaichandar/world-model-mcp/wiki)
 
 ---
 

@@ -43,11 +43,10 @@ class LinterIntegration:
             temp_file = f.name
 
         try:
-            # Run ESLint
+            # Run ESLint with project config
             proc = await asyncio.create_subprocess_exec(
                 str(eslint_path),
                 "--format", "json",
-                "--no-eslintrc",  # Use project config
                 temp_file,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,

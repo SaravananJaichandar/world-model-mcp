@@ -18,6 +18,7 @@ from mcp.types import Tool, TextContent
 from .knowledge_graph import KnowledgeGraph
 from .tools import WorldModelTools
 from .config import Config
+from .ingest import ingest_queued_events, ingest_session_files
 
 # Set up logging
 logging.basicConfig(
@@ -38,6 +39,12 @@ async def main():
     kg = KnowledgeGraph(config.db_path)
     await kg.initialize()
     logger.info("Knowledge graph initialized")
+
+    # Ingest any queued events/sessions from hooks
+    events_ingested = await ingest_queued_events(kg, config.db_path)
+    sessions_ingested = await ingest_session_files(kg, config.db_path)
+    if events_ingested or sessions_ingested:
+        logger.info(f"Ingested {events_ingested} queued events, {sessions_ingested} sessions from hooks")
 
     # Create tools instance
     tools = WorldModelTools(kg, config)

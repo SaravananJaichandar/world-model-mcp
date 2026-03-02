@@ -10,7 +10,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from anthropic import Anthropic
+from anthropic import AsyncAnthropic
 from .models import Entity, Fact, Constraint
 from .config import Config
 
@@ -23,7 +23,7 @@ class EntityExtractor:
     def __init__(self, config: Config):
         self.config = config
         if config.anthropic_api_key:
-            self.client = Anthropic(api_key=config.anthropic_api_key)
+            self.client = AsyncAnthropic(api_key=config.anthropic_api_key)
         else:
             logger.warning("No Anthropic API key found - extraction will use fallback patterns")
             self.client = None
@@ -108,7 +108,7 @@ Focus on:
 """
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model=self.config.extraction_model,
                 max_tokens=1024,
                 temperature=0.0,  # Deterministic
@@ -349,7 +349,7 @@ Common patterns:
 """
 
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model=self.config.extraction_model,
                 max_tokens=512,
                 temperature=0.0,

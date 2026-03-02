@@ -366,15 +366,15 @@ class WorldModelTools:
         )
         await self.kg.create_event(event)
 
-        logger.info(f"Correction recorded: constraint_id={constraint_id}, rule={rule_name}")
+        logger.info(f"Correction recorded: constraint_id={constraint_id}, rule={constraint.rule_name}")
 
         return json.dumps(
             {
                 "constraint_id": constraint_id,
                 "learned_pattern": {
-                    "rule": rule_name,
-                    "type": constraint_type,
-                    "description": reasoning,
+                    "rule": constraint.rule_name,
+                    "type": constraint.constraint_type,
+                    "description": constraint.description,
                 },
             }
         )

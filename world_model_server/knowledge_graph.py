@@ -520,27 +520,18 @@ class KnowledgeGraph:
                 return constraint.id
 
     async def get_constraints(self, file_path: Optional[str] = None) -> List[Constraint]:
-        """Get constraints, optionally filtered by file pattern."""
+        """Get constraints, optionally filtered by file pattern using fnmatch."""
+        from fnmatch import fnmatch
+
         async with aiosqlite.connect(self.constraints_db) as db:
             db.row_factory = aiosqlite.Row
 
-            if file_path:
-                # Simple pattern matching (can be enhanced with fnmatch)
-                cursor = await db.execute(
-                    """
-                    SELECT * FROM constraints
-                    WHERE file_pattern IS NULL OR ? LIKE file_pattern
-                    ORDER BY violation_count DESC
-                """,
-                    (file_path,),
-                )
-            else:
-                cursor = await db.execute(
-                    "SELECT * FROM constraints ORDER BY violation_count DESC"
-                )
+            cursor = await db.execute(
+                "SELECT * FROM constraints ORDER BY violation_count DESC"
+            )
 
             rows = await cursor.fetchall()
-            return [
+            constraints = [
                 Constraint(
                     id=row["id"],
                     constraint_type=row["constraint_type"],
@@ -557,6 +548,14 @@ class KnowledgeGraph:
                 )
                 for row in rows
             ]
+
+            if file_path:
+                constraints = [
+                    c for c in constraints
+                    if c.file_pattern is None or fnmatch(file_path, c.file_pattern)
+                ]
+
+            return constraints
 
     # ============================================================================
     # Session Operations

@@ -3,7 +3,7 @@ name = "world-model-mcp"
 version = "0.1.0"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "SaravananJaichandar"}
 ]
 readme = "README.md"
 requires-python = ">=3.11"
