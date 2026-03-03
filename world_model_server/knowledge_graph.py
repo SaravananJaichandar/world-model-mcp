@@ -519,9 +519,20 @@ class KnowledgeGraph:
                 await db.commit()
                 return constraint.id
 
-    async def get_constraints(self, file_path: Optional[str] = None) -> List[Constraint]:
-        """Get constraints, optionally filtered by file pattern using fnmatch."""
+    @staticmethod
+    def _glob_match(path: str, pattern: str) -> bool:
+        """Match a file path against a glob pattern, supporting ** for recursive dirs."""
         from fnmatch import fnmatch
+        if '**' in pattern:
+            # ** matches zero or more directory levels
+            # e.g. src/api/**/*.ts should match src/api/users.ts AND src/api/v2/users.ts
+            flat_pattern = pattern.replace('**/', '')
+            recursive_pattern = pattern.replace('**', '*')
+            return fnmatch(path, flat_pattern) or fnmatch(path, recursive_pattern)
+        return fnmatch(path, pattern)
+
+    async def get_constraints(self, file_path: Optional[str] = None) -> List[Constraint]:
+        """Get constraints, optionally filtered by file pattern using glob matching."""
 
         async with aiosqlite.connect(self.constraints_db) as db:
             db.row_factory = aiosqlite.Row
@@ -552,7 +563,7 @@ class KnowledgeGraph:
             if file_path:
                 constraints = [
                     c for c in constraints
-                    if c.file_pattern is None or fnmatch(file_path, c.file_pattern)
+                    if c.file_pattern is None or self._glob_match(file_path, c.file_pattern)
                 ]
 
             return constraints

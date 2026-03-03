@@ -71,6 +71,8 @@ BUILD_SUMMARY.md
 OPEN_SOURCE_READY.md
 TEST_RESULTS.md
 SOCIAL_MEDIA_THREADS.md
+CREATE_RELEASE_GUIDE.md
+GITHUB_RELEASE_v*.md
 
 # API keys and secrets (never commit these!)
 **/secrets.json

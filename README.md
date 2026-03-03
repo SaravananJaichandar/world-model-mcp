@@ -2,14 +2,14 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.1.0)** -- Core knowledge graph and MCP tools work. Hooks pipeline and learning loop are functional but early-stage. Contributions welcome.
+> **Status: Alpha (v0.1.1)** -- Core knowledge graph and MCP tools work. Hooks pipeline and learning loop are functional but early-stage. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
 ---
 
-## 🎯 What It Does
+## What It Does
 
 World Model MCP creates a **temporal knowledge graph** of your codebase that learns from every Claude Code session to:
 
@@ -21,7 +21,7 @@ Think of it as giving Claude a **long-term memory** of your project.
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ### Installation (3 commands)
 
@@ -50,25 +50,25 @@ your-project/
 
 ---
 
-## 🚀 Features
+## Features
 
-### 1. **Hallucination Prevention**
+### 1. Hallucination Prevention
 
 Before:
 ```typescript
 // Claude invents an API that doesn't exist
-const user = await User.findByEmail(email); // ❌ This method doesn't exist!
+const user = await User.findByEmail(email); // This method doesn't exist
 ```
 
 After:
 ```typescript
 // Claude checks the world model first
-const user = await User.findOne({ email }); // ✅ Verified to exist
+const user = await User.findOne({ email }); // Verified to exist
 ```
 
 **Goal**: Reduce non-existent API references by validating against the knowledge graph
 
-### 2. **Learning from Corrections**
+### 2. Learning from Corrections
 
 **Session 1**: User corrects Claude
 ```typescript
@@ -84,53 +84,55 @@ logger.debug('debug info');
 **Session 2**: Claude uses the learned pattern
 ```typescript
 // Claude automatically writes:
-logger.debug('debug info'); // ✅ No correction needed!
+logger.debug('debug info'); // No correction needed
 ```
 
 **Goal**: Learned patterns persist across sessions and prevent repeat violations
 
-### 3. **Regression Prevention**
+### 3. Regression Prevention
 
 ```typescript
 // Week 1: Bug fixed (null check added)
 if (user && user.email) { ... }
 
 // Week 2: Refactoring
-// World model warns: "⚠️ This line preserves a critical bug fix"
+// World model warns: "This line preserves a critical bug fix"
 // Claude preserves the null check
 
-// Result: Bug not re-introduced ✅
+// Result: Bug not re-introduced
 ```
 
 **Goal**: Detect potential regressions before code execution
 
 ---
 
-## 📊 How It Works
+## How It Works
 
 ### Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ Claude Code + Hooks                                      │
-│ ↓ Captures: file edits, tool calls, user corrections   │
+│ Captures: file edits, tool calls, user corrections       │
 └──────────────────────────────────────────────────────────┘
-                         ↓
+                         |
+                         v
 ┌──────────────────────────────────────────────────────────┐
 │ MCP Server (Python)                                      │
-│ • 6 MCP tools for querying/recording facts              │
-│ • LLM-powered entity extraction (Claude Haiku)          │
-│ • External linter integration (ESLint, Pylint, Ruff)    │
+│ - 6 MCP tools for querying/recording facts               │
+│ - LLM-powered entity extraction (Claude Haiku)           │
+│ - External linter integration (ESLint, Pylint, Ruff)     │
 └──────────────────────────────────────────────────────────┘
-                         ↓
+                         |
+                         v
 ┌──────────────────────────────────────────────────────────┐
 │ Knowledge Graph (SQLite + FTS5)                          │
-│ • entities.db - APIs, functions, classes                │
-│ • facts.db - Temporal assertions with evidence          │
-│ • relationships.db - Entity dependency graph             │
-│ • constraints.db - Learned rules from corrections       │
-│ • sessions.db - Session history and outcomes            │
-│ • events.db - Activity log with reasoning chains        │
+│ - entities.db: APIs, functions, classes                  │
+│ - facts.db: Temporal assertions with evidence            │
+│ - relationships.db: Entity dependency graph              │
+│ - constraints.db: Learned rules from corrections         │
+│ - sessions.db: Session history and outcomes              │
+│ - events.db: Activity log with reasoning chains          │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -141,7 +143,7 @@ if (user && user.email) { ... }
    - Query: "What was true on March 1st?"
 
 2. **Evidence Chains**: Every assertion traces back to source
-   - Fact → Session → Event → Source Code Location
+   - Fact -> Session -> Event -> Source Code Location
 
 3. **Constraint Learning**: Pattern recognition from user corrections
    - Automatic rule type inference (linting, architecture, testing)
@@ -154,7 +156,7 @@ if (user && user.email) { ... }
 
 ---
 
-## 🛠️ MCP Tools
+## MCP Tools
 
 Six MCP tools available to Claude Code:
 
@@ -219,7 +221,7 @@ result = get_related_bugs(
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[QUICKSTART.md](./QUICKSTART.md)** - 5-minute setup guide
 - **[CONTRIBUTING.md](./CONTRIBUTING.md)** - Contribution guidelines
@@ -241,7 +243,7 @@ Tests cover knowledge graph CRUD operations, FTS5 search, constraint management,
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -271,7 +273,7 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 {
   "hooks": {
     "PostToolUse": [{
-      "matcher": "Edit|Write|Bash",  // Customize trigger patterns
+      "matcher": "Edit|Write|Bash",
       "hooks": [...]
     }]
   }
@@ -280,11 +282,11 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ---
 
-## 🌍 Language Support
+## Language Support
 
 **Currently Supported**:
-- ✅ TypeScript / JavaScript
-- ✅ Python
+- TypeScript / JavaScript
+- Python
 
 **Coming Soon**:
 - Go, Rust, Java, C++
@@ -293,7 +295,7 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ---
 
-## 🔒 Privacy & Security
+## Privacy and Security
 
 - **Local-First**: All data stays on your machine
 - **No Telemetry**: Zero tracking or external data transmission
@@ -313,7 +315,7 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 ### v0.2.0 (Next)
 - [ ] Enhanced entity resolution with fuzzy matching
@@ -333,16 +335,16 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
+Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 - Development setup
 - Coding standards
 - Adding language support
 - Writing tests
 - Submitting PRs
 
-**Areas We Need Help**:
+**Areas where help is needed**:
 - Language parsers (Go, Rust, Java, C++)
 - Performance optimization
 - Documentation improvements
@@ -364,41 +366,13 @@ We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 
 ---
 
-## 🙏 Acknowledgments
-
-Built on the shoulders of giants:
-
-- **Context Graph Theory**: [Foundation Capital](https://foundationcapital.com/context-graphs-ais-trillion-dollar-opportunity/), PlayerZero, Graphlit, Glean
-- **MCP Protocol**: [Anthropic's Model Context Protocol](https://www.anthropic.com/news/model-context-protocol)
-- **Claude Code Hooks**: Continuous Claude v2 patterns
-- **Knowledge Graphs**: Mem0, Cognee, Graphiti architectures
-
-**Special Thanks**:
-- Anthropic team for Claude Code and MCP
-- Foundation Capital for the context graphs vision
-- Open source community for testing and feedback
-
----
-
-## 📜 License
+## License
 
 [MIT License](./LICENSE) - Free for commercial and personal use
 
 ---
 
-## 📞 Support
+## Support
 
 - **Issues**: [GitHub Issues](https://github.com/SaravananJaichandar/world-model-mcp/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/SaravananJaichandar/world-model-mcp/discussions)
-
----
-
-## ⭐ Star History
-
-If you find this project useful, please give it a star! It helps others discover it.
-
----
-
-**Built with ❤️ for the Claude Code community**
-
-*Making AI coding assistants smarter, one session at a time.*

@@ -175,3 +175,31 @@ async def test_get_bugs_for_file(kg):
     assert len(bugs) == 1
     assert "null pointer" in bugs[0].description
     assert len(bugs[0].critical_regions) > 0
+
+
+@pytest.mark.asyncio
+async def test_constraint_double_star_glob(kg):
+    """Test that constraints with ** glob patterns match correctly."""
+    constraint = Constraint(
+        constraint_type="architecture",
+        rule_name="no-direct-db",
+        file_pattern="src/api/**/*.ts",
+        description="API routes must use service layer",
+        violation_count=1,
+        examples=[{"incorrect": "db.query()"}],
+        severity="error",
+    )
+    await kg.create_or_update_constraint(constraint)
+
+    # Direct child should match
+    matched = await kg.get_constraints("src/api/users.ts")
+    assert len(matched) == 1
+    assert matched[0].rule_name == "no-direct-db"
+
+    # Nested child should match
+    matched_nested = await kg.get_constraints("src/api/v2/users.ts")
+    assert len(matched_nested) == 1
+
+    # Wrong directory should NOT match
+    unmatched = await kg.get_constraints("src/utils/helpers.ts")
+    assert len(unmatched) == 0

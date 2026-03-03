@@ -1,6 +1,6 @@
 # World Model MCP - Quick Start Guide
 
-## 🚀 Installation (5 minutes)
+## Installation (5 minutes)
 
 ### Prerequisites
 - Python 3.11+
@@ -10,11 +10,12 @@
 ### Step 1: Install the package
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourorg/world-model-mcp.git
-cd world-model-mcp
+# Option A: Install from PyPI
+pip install world-model-mcp
 
-# Install Python dependencies
+# Option B: Install from source
+git clone https://github.com/SaravananJaichandar/world-model-mcp.git
+cd world-model-mcp
 pip install -e .
 
 # Build TypeScript hooks
@@ -55,21 +56,21 @@ your-project/
 
 ### Step 3: Restart Claude Code
 
-Close and reopen VSCode (or reload window: `Cmd/Ctrl + Shift + P` → "Reload Window")
+Close and reopen VSCode (or reload window: `Cmd/Ctrl + Shift + P` -> "Reload Window")
 
-## ✅ Verify Installation
+## Verify Installation
 
 ```bash
 # Check status
 python -m world_model_server.cli status
 
 # Should show:
-# ✓ Databases initialized
-# ✓ Hooks installed
-# ✓ MCP configuration ready
+# Databases initialized
+# Hooks installed
+# MCP configuration ready
 ```
 
-## 🎯 Usage Examples
+## Usage Examples
 
 ### Example 1: Preventing Hallucinations
 
@@ -77,20 +78,20 @@ python -m world_model_server.cli status
 ```
 User: "Add user authentication"
 Claude: "I'll use the User.findByEmail() method..."
-Result: ❌ Method doesn't exist, code breaks
+Result: Method doesn't exist, code breaks
 ```
 
 **With World Model:**
 ```
 User: "Add user authentication"
 Claude internally:
-  → query_fact("User.findByEmail")
-  → Result: exists=false, confidence=0.9
-  → Alternative: User.findOne({email: "..."})
+  -> query_fact("User.findByEmail")
+  -> Result: exists=false, confidence=0.9
+  -> Alternative: User.findOne({email: "..."})
 
 Claude: "I'll use User.findOne({email}) to find users by email,
         based on the existing API in src/models/User.ts:42"
-Result: ✅ Correct API, code works
+Result: Correct API, code works
 ```
 
 ### Example 2: Learning from Corrections
@@ -115,7 +116,7 @@ Constraint learned: {
 **Session 2 (next day):**
 ```typescript
 // Claude automatically writes:
-logger.info('Request received');  // ✅ Learned from correction!
+logger.info('Request received');  // Learned from correction
 
 // No user correction needed
 ```
@@ -137,8 +138,8 @@ Critical region: Lines 42-45
 User: "Refactor the authentication middleware"
 
 // World model warns:
-⚠️  This file has 1 known bug fix (refreshToken null check)
-    Critical region: Lines 42-45 must preserve null check
+// This file has 1 known bug fix (refreshToken null check)
+// Critical region: Lines 42-45 must preserve null check
 
 // Claude's refactored code preserves the fix:
 export const authenticateUser = (req, res, next) => {
@@ -153,7 +154,7 @@ export const authenticateUser = (req, res, next) => {
 }
 ```
 
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -178,7 +179,7 @@ Edit `.claude/settings.json` to customize which tools trigger hooks:
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write|Bash",  // Add/remove tools here
+        "matcher": "Edit|Write|Bash",
         "hooks": [...]
       }
     ]
@@ -186,7 +187,7 @@ Edit `.claude/settings.json` to customize which tools trigger hooks:
 }
 ```
 
-## 📊 Monitoring
+## Monitoring
 
 ### View captured events
 
@@ -222,11 +223,11 @@ async def query():
 asyncio.run(query())
 ```
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Hooks not firing
 
-1. Check Claude Code console: `Cmd/Ctrl + Shift + P` → "Claude Code: Show Output Channel"
+1. Check Claude Code console: `Cmd/Ctrl + Shift + P` -> "Claude Code: Show Output Channel"
 2. Verify hooks are executable: `ls -la .claude/hooks/`
 3. Check hook output: Look for errors in Claude Code output
 
@@ -250,18 +251,12 @@ python -m world_model_server.init --project-dir .
 ls -la .claude/world-model/
 ```
 
-## 📚 Next Steps
+## Next Steps
 
 - **Advanced Usage**: See [README.md](README.md) for full documentation
-- **API Reference**: See [docs/API.md](docs/API.md) for MCP tool details
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) to help improve the project
 
-## 🆘 Getting Help
+## Getting Help
 
-- **Issues**: https://github.com/yourorg/world-model-mcp/issues
-- **Discussions**: https://github.com/yourorg/world-model-mcp/discussions
-- **Discord**: https://discord.gg/world-model-mcp
-
----
-
-**Happy coding with your new world model! 🌍🤖**
+- **Issues**: https://github.com/SaravananJaichandar/world-model-mcp/issues
+- **Discussions**: https://github.com/SaravananJaichandar/world-model-mcp/discussions
