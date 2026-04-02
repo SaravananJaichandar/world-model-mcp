@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.2.5"
+version = "0.3.0"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}

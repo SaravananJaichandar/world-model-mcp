@@ -206,6 +206,8 @@ Focus on:
             return "rust"
         elif file_path.endswith(".sol"):
             return "solidity"
+        elif file_path.endswith(".java"):
+            return "java"
         return "unknown"
 
     def _extract_typescript_entities(
@@ -342,6 +344,8 @@ Focus on:
             import_data.extend(self._extract_python_imports(file_path, content))
         elif lang == "solidity":
             entities.extend(self._extract_solidity_entities(file_path, content))
+        elif lang == "java":
+            entities.extend(self._extract_java_entities(file_path, content))
 
         return entities, import_data
 
@@ -379,6 +383,41 @@ Focus on:
                 entities.append(
                     Entity(entity_type="api", name=name, file_path=file_path, signature=f"event {name}(...)")
                 )
+
+        return entities
+
+    def _extract_java_entities(self, file_path: str, content: str) -> List[Entity]:
+        """Extract entities from Java code."""
+        entities = []
+        seen_names = set()
+
+        # Classes and interfaces
+        class_pattern = r"^(?:public\s+)?(?:abstract\s+)?(?:class|interface|enum)\s+(\w+)"
+        for match in re.finditer(class_pattern, content, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(entity_type="class", name=name, file_path=file_path, signature=match.group(0).strip())
+                )
+
+        # Methods
+        method_pattern = r"^\s+(?:public|private|protected)?\s*(?:static\s+)?(?:[\w<>\[\]]+)\s+(\w+)\s*\("
+        for match in re.finditer(method_pattern, content, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names and name not in ("if", "for", "while", "switch", "catch"):
+                seen_names.add(name)
+                entities.append(
+                    Entity(entity_type="function", name=name, file_path=file_path, signature=f"{name}(...)")
+                )
+
+        # Spring/JAX-RS API endpoints
+        api_pattern = r'@(?:GetMapping|PostMapping|PutMapping|DeleteMapping|RequestMapping)\s*\(\s*(?:value\s*=\s*)?["\']([^"\']+)["\']'
+        for match in re.finditer(api_pattern, content):
+            path = match.group(1)
+            entities.append(
+                Entity(entity_type="api", name=path, file_path=file_path, signature=match.group(0).strip())
+            )
 
         return entities
 

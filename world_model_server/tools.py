@@ -62,13 +62,26 @@ class WorldModelTools:
         result = await self.kg.query_facts(query=query, entity_type=entity_type, current_only=True)
 
         # If no facts found, try searching entities directly
-        if not result.facts and entity_type:
+        if not result.facts:
             entities = await self.kg.find_entities(entity_type=entity_type, name=query)
+            if not entities:
+                # Fuzzy fallback for typos and abbreviations
+                entities = await self.kg.find_entities_fuzzy(name=query, threshold=0.6, limit=5)
+                if entities:
+                    result.confidence = 0.6  # Lower confidence for fuzzy matches
             if entities:
-                # Found matching entities, treat as exists
                 result.exists = True
-                result.confidence = 0.8
+                if result.confidence == 0.0:
+                    result.confidence = 0.8
                 result.alternatives = [e.name for e in entities[:5]]
+                for e in entities[:5]:
+                    result.facts.append(Fact(
+                        fact_text=f"{e.entity_type} {e.name} exists in {e.file_path or 'unknown'}",
+                        evidence_type="source_code",
+                        evidence_path=e.file_path or "",
+                        confidence=result.confidence,
+                        status="canonical",
+                    ))
 
         logger.info(
             f"Query result: exists={result.exists}, facts={len(result.facts)}, confidence={result.confidence}"

@@ -96,17 +96,19 @@ def query_command(args):
 
         query = args.query
 
-        # Search entities by name
+        # Search entities by name and file path
         entities = await kg.find_entities(name=query)
+        fuzzy_used = False
 
-        # Also search by file path for module-level matching
-        file_entities = await kg.find_entities(name=f"{query}.")
-        for fe in file_entities:
-            if fe.id not in {e.id for e in entities}:
-                entities.append(fe)
+        if not entities:
+            # Fuzzy fallback
+            entities = await kg.find_entities_fuzzy(name=query, threshold=0.6, limit=10)
+            if entities:
+                fuzzy_used = True
 
         if entities:
-            console.print(f"\n[bold]Entities matching '{query}':[/bold]")
+            label = "Fuzzy matches" if fuzzy_used else "Entities matching"
+            console.print(f"\n[bold]{label} for '{query}':[/bold]")
             for e in entities:
                 sig = f" ({e.signature})" if e.signature else ""
                 console.print(f"  [{e.entity_type}] {e.name}{sig}")

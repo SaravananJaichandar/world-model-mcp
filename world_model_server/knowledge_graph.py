@@ -46,6 +46,34 @@ class KnowledgeGraph:
         self.sessions_db = self.db_path / "sessions.db"
         self.events_db = self.db_path / "events.db"
 
+        # Query cache with TTL (seconds)
+        self._cache: Dict[str, Tuple[float, Any]] = {}
+        self._cache_ttl = 60.0  # 1 minute default
+
+    def _cache_get(self, key: str) -> Optional[Any]:
+        """Get a value from cache if not expired."""
+        import time as _time
+        if key in self._cache:
+            ts, val = self._cache[key]
+            if _time.time() - ts < self._cache_ttl:
+                return val
+            del self._cache[key]
+        return None
+
+    def _cache_set(self, key: str, value: Any) -> None:
+        """Store a value in cache."""
+        import time as _time
+        self._cache[key] = (_time.time(), value)
+
+    def _cache_invalidate(self, prefix: str = "") -> None:
+        """Invalidate cache entries matching prefix, or all if empty."""
+        if not prefix:
+            self._cache.clear()
+        else:
+            keys = [k for k in self._cache if k.startswith(prefix)]
+            for k in keys:
+                del self._cache[k]
+
     async def initialize(self) -> None:
         """Create database schemas if they don't exist."""
         await self._create_entities_schema()
@@ -309,7 +337,7 @@ class KnowledgeGraph:
     async def find_entities(
         self, entity_type: Optional[str] = None, name: Optional[str] = None
     ) -> List[Entity]:
-        """Find entities by type and/or name."""
+        """Find entities by type and/or name. Also searches file_path for module-level matching."""
         async with aiosqlite.connect(self.entities_db) as db:
             db.row_factory = aiosqlite.Row
             query = "SELECT * FROM entities WHERE 1=1"
@@ -319,7 +347,8 @@ class KnowledgeGraph:
                 query += " AND entity_type = ?"
                 params.append(entity_type)
             if name:
-                query += " AND name LIKE ?"
+                query += " AND (name LIKE ? OR file_path LIKE ?)"
+                params.append(f"%{name}%")
                 params.append(f"%{name}%")
 
             cursor = await db.execute(query, params)
@@ -339,6 +368,45 @@ class KnowledgeGraph:
                 for row in rows
             ]
 
+    async def find_entities_fuzzy(
+        self, name: str, threshold: float = 0.6, limit: int = 10
+    ) -> List[Entity]:
+        """Find entities with approximate name matching using sequence similarity."""
+        from difflib import SequenceMatcher
+
+        async with aiosqlite.connect(self.entities_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM entities")
+            rows = await cursor.fetchall()
+
+            scored = []
+            name_lower = name.lower()
+            for row in rows:
+                entity_name = row["name"].lower()
+                file_path = (row["file_path"] or "").lower()
+
+                # Check name similarity
+                name_ratio = SequenceMatcher(None, name_lower, entity_name).ratio()
+                # Check if query is a substring
+                if name_lower in entity_name or name_lower in file_path:
+                    name_ratio = max(name_ratio, 0.8)
+
+                if name_ratio >= threshold:
+                    entity = Entity(
+                        id=row["id"],
+                        entity_type=row["entity_type"],
+                        name=row["name"],
+                        file_path=row["file_path"],
+                        signature=row["signature"],
+                        first_seen=datetime.fromisoformat(row["first_seen"]),
+                        last_updated=datetime.fromisoformat(row["last_updated"]),
+                        metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+                    )
+                    scored.append((name_ratio, entity))
+
+            scored.sort(key=lambda x: x[0], reverse=True)
+            return [entity for _, entity in scored[:limit]]
+
     async def entity_exists_for_file(self, file_path: str) -> bool:
         """Check if any entity exists with the given file_path."""
         async with aiosqlite.connect(self.entities_db) as db:
@@ -346,6 +414,18 @@ class KnowledgeGraph:
                 "SELECT 1 FROM entities WHERE file_path = ? LIMIT 1", (file_path,)
             )
             return await cursor.fetchone() is not None
+
+    async def get_file_entity_updated(self, file_path: str) -> Optional[datetime]:
+        """Get the last_updated timestamp for a file entity. Returns None if not found."""
+        async with aiosqlite.connect(self.entities_db) as db:
+            cursor = await db.execute(
+                "SELECT last_updated FROM entities WHERE file_path = ? AND entity_type = 'file' LIMIT 1",
+                (file_path,),
+            )
+            row = await cursor.fetchone()
+            if row:
+                return datetime.fromisoformat(row[0])
+            return None
 
     async def get_entity_count(self) -> int:
         """Get total number of entities in the graph."""
@@ -412,6 +492,7 @@ class KnowledgeGraph:
                 ),
             )
             await db.commit()
+        self._cache_invalidate("facts:")
         return fact.id
 
     async def query_facts(
@@ -421,7 +502,7 @@ class KnowledgeGraph:
         current_only: bool = True,
     ) -> QueryFactResult:
         """
-        Query facts using full-text search.
+        Query facts using full-text search. Results are cached for performance.
 
         Args:
             query: Search query
@@ -431,6 +512,11 @@ class KnowledgeGraph:
         Returns:
             QueryFactResult with matching facts and confidence
         """
+        cache_key = f"facts:{query}:{entity_type}:{current_only}"
+        cached = self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async with aiosqlite.connect(self.facts_db) as db:
             db.row_factory = aiosqlite.Row
 
@@ -480,7 +566,9 @@ class KnowledgeGraph:
                 max_confidence = 0.0
                 exists = False
 
-            return QueryFactResult(exists=exists, facts=facts, confidence=max_confidence)
+            result = QueryFactResult(exists=exists, facts=facts, confidence=max_confidence)
+            self._cache_set(cache_key, result)
+            return result
 
     async def invalidate_fact(self, fact_id: str, invalid_at: Optional[datetime] = None) -> None:
         """Mark a fact as no longer true."""

@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 
@@ -20,7 +21,7 @@ from .models import Entity, Fact, Relationship
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".sol", ".go", ".rs"}
+SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".sol", ".go", ".rs", ".java"}
 
 SKIP_DIRS = {
     "node_modules", "dist", "build", "__pycache__", ".git", ".claude",
@@ -195,10 +196,18 @@ class ProjectSeeder:
         """Process a single file. Returns (entity_count, relationship_count)."""
         rel_path = str(file_path.resolve().relative_to(self.project_dir))
 
-        # Skip already-seeded files unless force
-        if not force and await self.kg.entity_exists_for_file(rel_path):
-            result.skipped_files += 1
-            return (0, 0)
+        # Skip files that haven't changed since last seed (unless force)
+        if not force:
+            last_seeded = await self.kg.get_file_entity_updated(rel_path)
+            if last_seeded is not None:
+                try:
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if file_mtime <= last_seeded:
+                        result.skipped_files += 1
+                        return (0, 0)
+                    # File changed since last seed, re-process it
+                except OSError:
+                    pass
 
         try:
             raw = file_path.read_bytes()

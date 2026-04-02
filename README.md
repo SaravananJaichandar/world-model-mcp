@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.2.5)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
+> **Status: Alpha (v0.3.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -347,22 +347,35 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ## Roadmap
 
-### v0.2.0 (Current)
+### v0.2.x (Current)
 - [x] Auto-seeding: knowledge graph populates from existing codebase on setup
 - [x] PR Review Intelligence: ingest GitHub review comments as constraints
 - [x] Relationship tracking: import and dependency graph between entities
+- [x] Multi-language support: Python, TypeScript/JavaScript, Solidity, Go, Rust
+- [x] CLI query command for knowledge graph lookups
 - [x] 40 tests, 8 MCP tools
 
 ### v0.3.0 (Next)
-- [ ] Enhanced entity resolution with fuzzy matching
-- [ ] Multi-language support (Go, Rust, Java)
-- [ ] Trajectory learning (co-edit patterns)
-- [ ] Performance optimizations (query caching)
+- [ ] Module-level matching: query by module name finds the file and its contents
+- [ ] Incremental re-seeding: only re-process files changed since last seed
+- [ ] Fuzzy entity matching: approximate name search for typos and abbreviations
+- [ ] Query caching: in-memory cache with TTL for repeated lookups
+- [ ] Java support: complete multi-language coverage
+- [ ] MCP server pipeline validation on real projects
 
 ### v0.4.0
-- [ ] World model simulation ("what if" queries)
-- [ ] Test failure prediction
-- [ ] Multi-project knowledge transfer
+- [ ] Outcome linkage: connect code changes to test results and CI failures
+- [ ] Trajectory learning: track co-edit patterns between files
+- [ ] Decision trace capture: structured log of agent proposals and human corrections
+- [ ] VS Code / Cursor extension: sidebar for knowledge graph visibility
+- [ ] Cross-project entity search
+
+### v0.5.0
+- [ ] Regression prediction from historical outcome data
+- [ ] World model simulation: "what if" queries for proposed changes
+- [ ] Test failure prediction based on change patterns
+- [ ] Multi-project knowledge transfer: promote constraints across repos
+- [ ] AST-based extraction via tree-sitter
 
 ---
 
