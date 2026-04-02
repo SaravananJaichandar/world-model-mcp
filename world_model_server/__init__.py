@@ -6,7 +6,7 @@ Claude Code sessions to prevent hallucinations, repeated mistakes,
 and regressions.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "World Model Team"
 
 from .models import Entity, Fact, Constraint, Session, Event
