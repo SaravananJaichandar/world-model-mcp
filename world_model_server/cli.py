@@ -191,6 +191,89 @@ def query_command(args):
     asyncio.run(run())
 
 
+def decisions_command(args):
+    """Browse decision traces."""
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+
+        decisions = await kg.get_decisions(
+            session_id=args.session,
+            file_path=args.file,
+            decision_type=args.type,
+            limit=args.limit,
+        )
+
+        if not decisions:
+            console.print("[dim]No decisions recorded yet[/dim]")
+            return
+
+        console.print(f"[bold]Decision Log ({len(decisions)} entries):[/bold]\n")
+        for d in decisions:
+            console.print(f"  [{d.decision_type}] {d.timestamp.strftime('%Y-%m-%d %H:%M')}")
+            if d.file_path:
+                console.print(f"    File: {d.file_path}")
+            if d.reasoning:
+                console.print(f"    Reason: {d.reasoning}")
+            if d.constraint_learned_id:
+                console.print(f"    Constraint: {d.constraint_learned_id}")
+            console.print()
+
+    asyncio.run(run())
+
+
+def register_command(args):
+    """Register current project for cross-project search."""
+    from .registry import ProjectRegistry
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+    project_name = project_dir.name
+
+    ProjectRegistry.register(project_name, db_path)
+    console.print(f"Registered project: {project_name} -> {db_path}")
+
+
+def projects_command(args):
+    """List registered projects."""
+    from .registry import ProjectRegistry
+
+    projects = ProjectRegistry.list_projects()
+    if not projects:
+        console.print("[dim]No projects registered. Run: world-model register[/dim]")
+        return
+
+    console.print(f"[bold]Registered Projects ({len(projects)}):[/bold]")
+    for p in projects:
+        console.print(f"  {p['name']} -> {p['db_path']}")
+
+
+def search_global_command(args):
+    """Search across all registered projects."""
+    import asyncio
+    from .registry import search_global
+
+    async def run():
+        results = await search_global(args.query, limit=args.limit)
+        if not results:
+            console.print(f"[dim]No results for '{args.query}' across registered projects[/dim]")
+            return
+
+        console.print(f"[bold]Global search for '{args.query}' ({len(results)} results):[/bold]")
+        for r in results:
+            console.print(f"  [{r['entity_type']}] {r['name']} ({r['project']})")
+            if r.get("file_path"):
+                console.print(f"         {r['file_path']}")
+
+    asyncio.run(run())
+
+
 def status_command(args):
     """Show world model status for a project."""
     project_dir = Path(args.project_dir).resolve()
@@ -258,6 +341,30 @@ def main():
         "--project-dir", type=str, default=".", help="Project directory"
     )
     query_parser.set_defaults(func=query_command)
+
+    # Decisions command
+    decisions_parser = subparsers.add_parser("decisions", help="Browse decision traces")
+    decisions_parser.add_argument("--project-dir", type=str, default=".")
+    decisions_parser.add_argument("--session", type=str, help="Filter by session ID")
+    decisions_parser.add_argument("--file", type=str, help="Filter by file path")
+    decisions_parser.add_argument("--type", type=str, choices=["correction", "approval", "rejection"])
+    decisions_parser.add_argument("--limit", type=int, default=20)
+    decisions_parser.set_defaults(func=decisions_command)
+
+    # Register command
+    register_parser = subparsers.add_parser("register", help="Register project for cross-project search")
+    register_parser.add_argument("--project-dir", type=str, default=".")
+    register_parser.set_defaults(func=register_command)
+
+    # Projects command
+    projects_parser = subparsers.add_parser("projects", help="List registered projects")
+    projects_parser.set_defaults(func=projects_command)
+
+    # Search global command
+    search_global_parser = subparsers.add_parser("search-global", help="Search across all projects")
+    search_global_parser.add_argument("query", type=str, help="Search term")
+    search_global_parser.add_argument("--limit", type=int, default=20)
+    search_global_parser.set_defaults(func=search_global_command)
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show world model status")

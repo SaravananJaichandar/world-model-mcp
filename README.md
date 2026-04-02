@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.3.1)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
+> **Status: Alpha (v0.4.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -129,7 +129,7 @@ if (user && user.email) { ... }
                          v
 ┌──────────────────────────────────────────────────────────┐
 │ MCP Server (Python)                                      │
-│ - 8 MCP tools for querying/recording/seeding             │
+│ - 13 MCP tools for querying/recording/learning            │
 │ - LLM-powered entity extraction (Claude Haiku)           │
 │ - External linter integration (ESLint, Pylint, Ruff)     │
 └──────────────────────────────────────────────────────────┘
@@ -168,7 +168,7 @@ if (user && user.email) { ... }
 
 ## MCP Tools
 
-Eight MCP tools available to Claude Code:
+Thirteen MCP tools available to Claude Code:
 
 ### 1. `query_fact`
 Check if APIs/functions exist before using them
@@ -363,12 +363,12 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [ ] Java support: complete multi-language coverage
 - [ ] MCP server pipeline validation on real projects
 
-### v0.4.0
-- [ ] Outcome linkage: connect code changes to test results and CI failures
-- [ ] Trajectory learning: track co-edit patterns between files
-- [ ] Decision trace capture: structured log of agent proposals and human corrections
-- [ ] VS Code / Cursor extension: sidebar for knowledge graph visibility
-- [ ] Cross-project entity search
+### v0.4.0 (Current)
+- [x] Outcome linkage: test failures linked to code changes with facts
+- [x] Trajectory learning: co-edit patterns tracked across sessions
+- [x] Decision trace capture: structured log of agent proposals and human corrections
+- [x] Cross-project entity search with project registry
+- [x] 5 new MCP tools (13 total), 104 tests
 
 ### v0.5.0
 - [ ] Regression prediction from historical outcome data

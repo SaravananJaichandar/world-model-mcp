@@ -257,3 +257,38 @@ class BugInfo(BaseModel):
     fixed_at: datetime
     critical_regions: List[Dict[str, Any]] = Field(default_factory=list)
     evidence_path: str
+
+
+class Decision(BaseModel):
+    """A decision trace capturing agent proposal and human response."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    id: str = Field(default_factory=generate_id)
+    session_id: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    tool_name: Optional[str] = None
+    agent_proposal: Dict[str, Any] = Field(default_factory=dict)
+    human_correction: Dict[str, Any] = Field(default_factory=dict)
+    constraint_learned_id: Optional[str] = None
+    file_path: Optional[str] = None
+    reasoning: Optional[str] = None
+    decision_type: Literal["correction", "approval", "rejection"] = "correction"
+
+
+class TestOutcome(BaseModel):
+    """A test result linked to code changes."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    id: str = Field(default_factory=generate_id)
+    session_id: str
+    timestamp: datetime = Field(default_factory=datetime.now)
+    test_name: str
+    test_file: Optional[str] = None
+    passed: bool
+    error_message: Optional[str] = None
+    linked_event_ids: List[str] = Field(default_factory=list)
+    linked_file_paths: List[str] = Field(default_factory=list)

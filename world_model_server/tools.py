@@ -21,6 +21,8 @@ from .models import (
     QueryFactResult,
     ValidationResult,
     BugInfo,
+    Decision,
+    TestOutcome,
 )
 from .config import Config
 from .extraction import EntityExtractor
@@ -228,6 +230,18 @@ class WorldModelTools:
                 }
             )
 
+        # Check past test failures linked to this file
+        try:
+            outcomes = await self.kg.get_outcomes_for_file(file_path, limit=5)
+            failed_tests = [o for o in outcomes if not o.passed]
+            if failed_tests:
+                test_names = [o.test_name for o in failed_tests[:3]]
+                suggestions.append(
+                    f"Warning: past changes to this file caused test failures: {', '.join(test_names)}"
+                )
+        except Exception:
+            pass  # outcomes.db may not exist yet
+
         safe = len(violations) == 0
         confidence = 1.0 if safe else 0.95 if any(v.get("source") == "linter" for v in violations) else 0.9
 
@@ -380,6 +394,19 @@ class WorldModelTools:
         )
         await self.kg.create_event(event)
 
+        # Also record as a decision trace
+        decision = Decision(
+            session_id=session_id,
+            tool_name="UserEdit",
+            agent_proposal=claude_action,
+            human_correction=user_correction,
+            constraint_learned_id=constraint_id,
+            file_path=file_path,
+            reasoning=reasoning,
+            decision_type="correction",
+        )
+        await self.kg.record_decision(decision)
+
         logger.info(f"Correction recorded: constraint_id={constraint_id}, rule={constraint.rule_name}")
 
         return json.dumps(
@@ -512,4 +539,140 @@ class WorldModelTools:
             "constraints_created": result.constraints_created,
             "constraints_updated": result.constraints_updated,
             "duration_seconds": result.duration_seconds,
+        })
+
+    # ============================================================================
+    # Tool 9: record_decision (v0.4.0)
+    # ============================================================================
+
+    async def record_decision(
+        self,
+        session_id: str,
+        tool_name: Optional[str] = None,
+        agent_proposal: Dict[str, Any] = None,
+        human_correction: Dict[str, Any] = None,
+        file_path: Optional[str] = None,
+        reasoning: Optional[str] = None,
+        decision_type: str = "correction",
+    ) -> str:
+        """Record a decision trace."""
+        decision = Decision(
+            session_id=session_id,
+            tool_name=tool_name,
+            agent_proposal=agent_proposal or {},
+            human_correction=human_correction or {},
+            file_path=file_path,
+            reasoning=reasoning,
+            decision_type=decision_type,
+        )
+        did = await self.kg.record_decision(decision)
+        logger.info(f"Decision recorded: {did} ({decision_type})")
+        return json.dumps({"decision_id": did, "decision_type": decision_type})
+
+    # ============================================================================
+    # Tool 10: get_decision_log (v0.4.0)
+    # ============================================================================
+
+    async def get_decision_log(
+        self,
+        session_id: Optional[str] = None,
+        file_path: Optional[str] = None,
+        decision_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> str:
+        """Get decision traces with optional filters."""
+        decisions = await self.kg.get_decisions(
+            session_id=session_id,
+            file_path=file_path,
+            decision_type=decision_type,
+            limit=limit,
+        )
+        return json.dumps({
+            "decisions": [
+                {
+                    "id": d.id,
+                    "session_id": d.session_id,
+                    "timestamp": d.timestamp.isoformat(),
+                    "tool_name": d.tool_name,
+                    "agent_proposal": d.agent_proposal,
+                    "human_correction": d.human_correction,
+                    "file_path": d.file_path,
+                    "reasoning": d.reasoning,
+                    "decision_type": d.decision_type,
+                }
+                for d in decisions
+            ],
+            "count": len(decisions),
+        })
+
+    # ============================================================================
+    # Tool 11: record_test_outcome (v0.4.0)
+    # ============================================================================
+
+    async def record_test_outcome(
+        self, session_id: str, test_results: List[Dict[str, Any]]
+    ) -> str:
+        """Record test outcomes and link to recent code changes."""
+        recent_events = await self.kg.get_recent_file_edit_events(session_id, limit=10)
+        edited_files = list(dict.fromkeys(
+            e.tool_input.get("file_path", "") for e in recent_events if e.tool_input.get("file_path")
+        ))
+        event_ids = [e.id for e in recent_events]
+
+        created = 0
+        failed = 0
+        for tr in test_results:
+            outcome = TestOutcome(
+                session_id=session_id,
+                test_name=tr.get("name", "unknown"),
+                test_file=tr.get("file"),
+                passed=tr.get("passed", True),
+                error_message=tr.get("error"),
+                linked_event_ids=event_ids,
+                linked_file_paths=edited_files,
+            )
+            await self.kg.create_test_outcome(outcome)
+            created += 1
+
+            if not outcome.passed and edited_files:
+                fact = Fact(
+                    fact_text=f"Change to {', '.join(edited_files[:3])} caused {outcome.test_name} to fail",
+                    evidence_type="test",
+                    evidence_path=outcome.test_file or "unknown",
+                    confidence=0.85,
+                    status="canonical",
+                    session_id=session_id,
+                )
+                await self.kg.create_fact(fact)
+                failed += 1
+
+        logger.info(f"Recorded {created} test outcomes ({failed} failures linked)")
+        return json.dumps({"outcomes_recorded": created, "failures_linked": failed})
+
+    # ============================================================================
+    # Tool 12: get_co_edit_suggestions (v0.4.0)
+    # ============================================================================
+
+    async def get_co_edit_suggestions(self, file_path: str, limit: int = 5) -> str:
+        """Get files commonly edited alongside the given file."""
+        co_edits = await self.kg.get_co_edited_files(file_path, limit=limit)
+        return json.dumps({
+            "file_path": file_path,
+            "suggestions": co_edits,
+            "message": f"When editing {file_path}, consider also updating: "
+                       + ", ".join(c["file_path"] for c in co_edits) if co_edits else "No co-edit patterns found yet.",
+        })
+
+    # ============================================================================
+    # Tool 13: search_global (v0.4.0)
+    # ============================================================================
+
+    async def search_global(self, query: str, limit: int = 20) -> str:
+        """Search entities across all registered projects."""
+        from .registry import search_global as _search_global
+        results = await _search_global(query, limit)
+        return json.dumps({
+            "query": query,
+            "results": results,
+            "count": len(results),
         })

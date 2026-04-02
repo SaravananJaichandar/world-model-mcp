@@ -226,6 +226,84 @@ async def main():
                     },
                 },
             ),
+            Tool(
+                name="record_decision",
+                description="Record a decision trace: what the agent proposed and how the human responded",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "tool_name": {"type": "string"},
+                        "agent_proposal": {"type": "object"},
+                        "human_correction": {"type": "object"},
+                        "file_path": {"type": "string"},
+                        "reasoning": {"type": "string"},
+                        "decision_type": {"type": "string", "enum": ["correction", "approval", "rejection"]},
+                    },
+                    "required": ["session_id", "decision_type"],
+                },
+            ),
+            Tool(
+                name="get_decision_log",
+                description="Get decision traces showing agent proposals and human corrections",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "file_path": {"type": "string"},
+                        "decision_type": {"type": "string", "enum": ["correction", "approval", "rejection"]},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            ),
+            Tool(
+                name="record_test_outcome",
+                description="Record test results and link failures to recent code changes",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "test_results": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "file": {"type": "string"},
+                                    "passed": {"type": "boolean"},
+                                    "error": {"type": "string"},
+                                },
+                                "required": ["name", "passed"],
+                            },
+                        },
+                    },
+                    "required": ["session_id", "test_results"],
+                },
+            ),
+            Tool(
+                name="get_co_edit_suggestions",
+                description="Get files commonly edited alongside the given file based on historical patterns",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["file_path"],
+                },
+            ),
+            Tool(
+                name="search_global",
+                description="Search entities across all registered world-model projects",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -296,6 +374,48 @@ async def main():
                 result = await tools.ingest_pr_reviews(
                     repo=arguments.get("repo"),
                     count=arguments.get("count", 10),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "record_decision":
+                result = await tools.record_decision(
+                    session_id=arguments["session_id"],
+                    tool_name=arguments.get("tool_name"),
+                    agent_proposal=arguments.get("agent_proposal"),
+                    human_correction=arguments.get("human_correction"),
+                    file_path=arguments.get("file_path"),
+                    reasoning=arguments.get("reasoning"),
+                    decision_type=arguments.get("decision_type", "correction"),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_decision_log":
+                result = await tools.get_decision_log(
+                    session_id=arguments.get("session_id"),
+                    file_path=arguments.get("file_path"),
+                    decision_type=arguments.get("decision_type"),
+                    limit=arguments.get("limit", 50),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "record_test_outcome":
+                result = await tools.record_test_outcome(
+                    session_id=arguments["session_id"],
+                    test_results=arguments["test_results"],
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_co_edit_suggestions":
+                result = await tools.get_co_edit_suggestions(
+                    file_path=arguments["file_path"],
+                    limit=arguments.get("limit", 5),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "search_global":
+                result = await tools.search_global(
+                    query=arguments["query"],
+                    limit=arguments.get("limit", 20),
                 )
                 return [TextContent(type="text", text=result)]
 

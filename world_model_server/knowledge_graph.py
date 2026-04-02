@@ -19,6 +19,8 @@ from .models import (
     Event,
     QueryFactResult,
     BugInfo,
+    Decision,
+    TestOutcome,
 )
 
 
@@ -45,6 +47,9 @@ class KnowledgeGraph:
         self.constraints_db = self.db_path / "constraints.db"
         self.sessions_db = self.db_path / "sessions.db"
         self.events_db = self.db_path / "events.db"
+        self.decisions_db = self.db_path / "decisions.db"
+        self.outcomes_db = self.db_path / "outcomes.db"
+        self.trajectories_db = self.db_path / "trajectories.db"
 
         # Query cache with TTL (seconds)
         self._cache: Dict[str, Tuple[float, Any]] = {}
@@ -82,6 +87,9 @@ class KnowledgeGraph:
         await self._create_constraints_schema()
         await self._create_sessions_schema()
         await self._create_events_schema()
+        await self._create_decisions_schema()
+        await self._create_outcomes_schema()
+        await self._create_trajectories_schema()
 
     async def _create_entities_schema(self) -> None:
         """Create entities table and indexes."""
@@ -849,3 +857,330 @@ class KnowledgeGraph:
                 )
 
             return bugs
+
+    # ============================================================================
+    # Decision Operations (v0.4.0)
+    # ============================================================================
+
+    async def _create_decisions_schema(self) -> None:
+        """Create decisions table and indexes."""
+        async with aiosqlite.connect(self.decisions_db) as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS decisions (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    tool_name TEXT,
+                    agent_proposal JSON,
+                    human_correction JSON,
+                    constraint_learned_id TEXT,
+                    file_path TEXT,
+                    reasoning TEXT,
+                    decision_type TEXT NOT NULL
+                )
+            """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_decisions_session ON decisions(session_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_decisions_file ON decisions(file_path)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_decisions_type ON decisions(decision_type)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_decisions_time ON decisions(timestamp DESC)"
+            )
+            await db.commit()
+
+    async def record_decision(self, decision: Decision) -> str:
+        """Record a decision trace."""
+        async with aiosqlite.connect(self.decisions_db) as db:
+            await db.execute(
+                """
+                INSERT INTO decisions
+                (id, session_id, timestamp, tool_name, agent_proposal, human_correction,
+                 constraint_learned_id, file_path, reasoning, decision_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    decision.id,
+                    decision.session_id,
+                    decision.timestamp.isoformat(),
+                    decision.tool_name,
+                    json.dumps(decision.agent_proposal),
+                    json.dumps(decision.human_correction),
+                    decision.constraint_learned_id,
+                    decision.file_path,
+                    decision.reasoning,
+                    decision.decision_type,
+                ),
+            )
+            await db.commit()
+        return decision.id
+
+    async def get_decisions(
+        self,
+        session_id: Optional[str] = None,
+        file_path: Optional[str] = None,
+        decision_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Decision]:
+        """Get decisions with optional filters."""
+        async with aiosqlite.connect(self.decisions_db) as db:
+            db.row_factory = aiosqlite.Row
+            query = "SELECT * FROM decisions WHERE 1=1"
+            params: List[Any] = []
+
+            if session_id:
+                query += " AND session_id = ?"
+                params.append(session_id)
+            if file_path:
+                query += " AND file_path LIKE ?"
+                params.append(f"%{file_path}%")
+            if decision_type:
+                query += " AND decision_type = ?"
+                params.append(decision_type)
+
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor = await db.execute(query, params)
+            rows = await cursor.fetchall()
+
+            return [
+                Decision(
+                    id=row["id"],
+                    session_id=row["session_id"],
+                    timestamp=datetime.fromisoformat(row["timestamp"]),
+                    tool_name=row["tool_name"],
+                    agent_proposal=json.loads(row["agent_proposal"]) if row["agent_proposal"] else {},
+                    human_correction=json.loads(row["human_correction"]) if row["human_correction"] else {},
+                    constraint_learned_id=row["constraint_learned_id"],
+                    file_path=row["file_path"],
+                    reasoning=row["reasoning"],
+                    decision_type=row["decision_type"],
+                )
+                for row in rows
+            ]
+
+    async def get_decision_count(self) -> int:
+        """Get total number of decisions."""
+        async with aiosqlite.connect(self.decisions_db) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM decisions")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    # ============================================================================
+    # Test Outcome Operations (v0.4.0)
+    # ============================================================================
+
+    async def _create_outcomes_schema(self) -> None:
+        """Create test outcomes table."""
+        async with aiosqlite.connect(self.outcomes_db) as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS test_outcomes (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    test_name TEXT NOT NULL,
+                    test_file TEXT,
+                    passed BOOLEAN NOT NULL,
+                    error_message TEXT,
+                    linked_event_ids JSON,
+                    linked_file_paths JSON
+                )
+            """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_outcomes_session ON test_outcomes(session_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_outcomes_file ON test_outcomes(test_file)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_outcomes_passed ON test_outcomes(passed)"
+            )
+            await db.commit()
+
+    async def create_test_outcome(self, outcome: TestOutcome) -> str:
+        """Record a test outcome."""
+        async with aiosqlite.connect(self.outcomes_db) as db:
+            await db.execute(
+                """
+                INSERT INTO test_outcomes
+                (id, session_id, timestamp, test_name, test_file, passed,
+                 error_message, linked_event_ids, linked_file_paths)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    outcome.id,
+                    outcome.session_id,
+                    outcome.timestamp.isoformat(),
+                    outcome.test_name,
+                    outcome.test_file,
+                    outcome.passed,
+                    outcome.error_message,
+                    json.dumps(outcome.linked_event_ids),
+                    json.dumps(outcome.linked_file_paths),
+                ),
+            )
+            await db.commit()
+        return outcome.id
+
+    async def get_outcomes_for_file(self, file_path: str, limit: int = 20) -> List[TestOutcome]:
+        """Get test outcomes linked to a file."""
+        async with aiosqlite.connect(self.outcomes_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM test_outcomes
+                   WHERE linked_file_paths LIKE ?
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (f"%{file_path}%", limit),
+            )
+            rows = await cursor.fetchall()
+            return [
+                TestOutcome(
+                    id=row["id"],
+                    session_id=row["session_id"],
+                    timestamp=datetime.fromisoformat(row["timestamp"]),
+                    test_name=row["test_name"],
+                    test_file=row["test_file"],
+                    passed=bool(row["passed"]),
+                    error_message=row["error_message"],
+                    linked_event_ids=json.loads(row["linked_event_ids"]) if row["linked_event_ids"] else [],
+                    linked_file_paths=json.loads(row["linked_file_paths"]) if row["linked_file_paths"] else [],
+                )
+                for row in rows
+            ]
+
+    async def get_recent_file_edit_events(self, session_id: str, limit: int = 10) -> List[Event]:
+        """Get recent file_edit events for a session."""
+        async with aiosqlite.connect(self.events_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM events
+                   WHERE session_id = ? AND event_type = 'file_edit'
+                   ORDER BY timestamp DESC LIMIT ?""",
+                (session_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [
+                Event(
+                    id=row["id"],
+                    session_id=row["session_id"],
+                    event_type=row["event_type"],
+                    timestamp=datetime.fromisoformat(row["timestamp"]),
+                    entity_id=row["entity_id"],
+                    tool_name=row["tool_name"],
+                    tool_input=json.loads(row["tool_input"]) if row["tool_input"] else {},
+                    tool_output=json.loads(row["tool_output"]) if row["tool_output"] else {},
+                    reasoning=row["reasoning"],
+                    success=bool(row["success"]),
+                )
+                for row in rows
+            ]
+
+    # ============================================================================
+    # Trajectory / Co-edit Operations (v0.4.0)
+    # ============================================================================
+
+    async def _create_trajectories_schema(self) -> None:
+        """Create co-edit tracking table."""
+        async with aiosqlite.connect(self.trajectories_db) as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS co_edits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    file_a TEXT NOT NULL,
+                    file_b TEXT NOT NULL,
+                    co_edit_count INTEGER DEFAULT 1,
+                    last_co_edited TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    session_ids JSON DEFAULT '[]',
+                    UNIQUE(file_a, file_b)
+                )
+            """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_coedits_a ON co_edits(file_a)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_coedits_b ON co_edits(file_b)"
+            )
+            await db.commit()
+
+    async def record_co_edits(self, session_id: str) -> int:
+        """Analyze session events and record co-edit patterns. Returns pair count."""
+        events = await self.get_session_events(session_id)
+        edited_files = list(dict.fromkeys(
+            e.tool_input.get("file_path", "") or e.entity_id or ""
+            for e in events
+            if e.event_type == "file_edit" and (e.tool_input.get("file_path") or e.entity_id)
+        ))
+
+        # Cap at 20 files to avoid combinatorial explosion
+        edited_files = edited_files[:20]
+
+        if len(edited_files) < 2:
+            return 0
+
+        pairs_recorded = 0
+        async with aiosqlite.connect(self.trajectories_db) as db:
+            for i in range(len(edited_files)):
+                for j in range(i + 1, len(edited_files)):
+                    # Canonical order
+                    file_a, file_b = sorted([edited_files[i], edited_files[j]])
+
+                    # Upsert
+                    cursor = await db.execute(
+                        "SELECT co_edit_count, session_ids FROM co_edits WHERE file_a = ? AND file_b = ?",
+                        (file_a, file_b),
+                    )
+                    row = await cursor.fetchone()
+
+                    if row:
+                        count = row[0] + 1
+                        session_ids = json.loads(row[1]) if row[1] else []
+                        if session_id not in session_ids:
+                            session_ids.append(session_id)
+                        await db.execute(
+                            """UPDATE co_edits
+                               SET co_edit_count = ?, last_co_edited = ?, session_ids = ?
+                               WHERE file_a = ? AND file_b = ?""",
+                            (count, datetime.now().isoformat(), json.dumps(session_ids), file_a, file_b),
+                        )
+                    else:
+                        await db.execute(
+                            """INSERT INTO co_edits (file_a, file_b, co_edit_count, last_co_edited, session_ids)
+                               VALUES (?, ?, 1, ?, ?)""",
+                            (file_a, file_b, datetime.now().isoformat(), json.dumps([session_id])),
+                        )
+                    pairs_recorded += 1
+
+            await db.commit()
+        return pairs_recorded
+
+    async def get_co_edited_files(self, file_path: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get files commonly edited alongside the given file."""
+        async with aiosqlite.connect(self.trajectories_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM co_edits
+                   WHERE (file_a = ? OR file_b = ?) AND co_edit_count >= 2
+                   ORDER BY co_edit_count DESC LIMIT ?""",
+                (file_path, file_path, limit),
+            )
+            rows = await cursor.fetchall()
+
+            results = []
+            for row in rows:
+                other_file = row["file_b"] if row["file_a"] == file_path else row["file_a"]
+                results.append({
+                    "file_path": other_file,
+                    "co_edit_count": row["co_edit_count"],
+                    "last_co_edited": row["last_co_edited"],
+                })
+            return results
