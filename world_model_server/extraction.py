@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from anthropic import AsyncAnthropic
-from .models import Entity, Fact, Constraint
+from .models import Entity, Fact, Constraint, Relationship
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -304,6 +304,75 @@ Focus on:
             )
 
         return entities
+
+    def extract_entities_from_file(
+        self, file_path: str, content: str
+    ) -> Tuple[List[Entity], List["Relationship"]]:
+        """
+        Extract entities and import relationships from a full file.
+
+        Used by the auto-seeder to populate the knowledge graph from existing code.
+        Pattern-based only (no LLM) to work without an API key.
+
+        Returns:
+            Tuple of (entities, relationships as dicts with source/target info)
+        """
+        entities = []
+        import_data = []
+
+        lang = self._detect_language(file_path)
+
+        # Extract entities by passing content as the search text
+        if lang in ("typescript", "javascript"):
+            entities.extend(self._extract_typescript_entities(file_path, content, content))
+            import_data.extend(self._extract_typescript_imports(file_path, content))
+        elif lang == "python":
+            entities.extend(self._extract_python_entities(file_path, content, content))
+            import_data.extend(self._extract_python_imports(file_path, content))
+
+        return entities, import_data
+
+    def _extract_python_imports(self, file_path: str, content: str) -> List[Dict]:
+        """Extract import statements from Python code."""
+        imports = []
+
+        # import os, import json
+        for match in re.finditer(r"^import\s+([\w.]+)", content, re.MULTILINE):
+            imports.append({
+                "source_file": file_path,
+                "imported_module": match.group(1),
+            })
+
+        # from pathlib import Path
+        for match in re.finditer(r"^from\s+([\w.]+)\s+import", content, re.MULTILINE):
+            module = match.group(1)
+            if not module.startswith("."):
+                imports.append({
+                    "source_file": file_path,
+                    "imported_module": module,
+                })
+
+        return imports
+
+    def _extract_typescript_imports(self, file_path: str, content: str) -> List[Dict]:
+        """Extract import statements from TypeScript/JavaScript code."""
+        imports = []
+
+        # ES6: import { foo } from './bar'
+        for match in re.finditer(r"import\s+.*?\s+from\s+['\"]([^'\"]+)['\"]", content):
+            imports.append({
+                "source_file": file_path,
+                "imported_module": match.group(1),
+            })
+
+        # CommonJS: require('./bar')
+        for match in re.finditer(r"require\s*\(\s*['\"]([^'\"]+)['\"]\s*\)", content):
+            imports.append({
+                "source_file": file_path,
+                "imported_module": match.group(1),
+            })
+
+        return imports
 
     async def infer_constraint_from_correction(
         self, claude_content: str, user_content: str, file_path: str

@@ -8,6 +8,7 @@ get_constraints, record_correction, get_related_bugs.
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .knowledge_graph import KnowledgeGraph
@@ -428,3 +429,74 @@ class WorldModelTools:
 
         logger.info(f"Found {len(bugs)} bugs, risk_score={risk_score}")
         return json.dumps(result, indent=2)
+
+    # ============================================================================
+    # Tool 7: seed_project
+    # ============================================================================
+
+    async def seed_project(
+        self, project_dir: Optional[str] = None, force: bool = False
+    ) -> str:
+        """
+        Scan the project codebase and populate the knowledge graph.
+
+        Args:
+            project_dir: Project directory (defaults to inferring from db_path)
+            force: Re-seed already processed files
+
+        Returns:
+            JSON string with seeding statistics
+        """
+        from .seeder import ProjectSeeder
+
+        if project_dir is None:
+            # Infer project dir from db_path (strip .claude/world-model)
+            project_dir = str(Path(self.config.db_path).parent.parent.parent)
+
+        logger.info(f"Seeding project: {project_dir} (force={force})")
+
+        seeder = ProjectSeeder(project_dir, self.kg, self.config)
+        result = await seeder.seed(force=force)
+
+        return json.dumps({
+            "files_scanned": result.files_scanned,
+            "files_seeded": result.files_seeded,
+            "entities_created": result.entities_created,
+            "relationships_created": result.relationships_created,
+            "skipped_files": result.skipped_files,
+            "duration_seconds": result.duration_seconds,
+        })
+
+    # ============================================================================
+    # Tool 8: ingest_pr_reviews
+    # ============================================================================
+
+    async def ingest_pr_reviews(
+        self, repo: Optional[str] = None, count: int = 10
+    ) -> str:
+        """
+        Pull GitHub PR review comments and convert them into constraints.
+
+        Args:
+            repo: GitHub repo (owner/repo). Auto-detected if omitted.
+            count: Number of recent PRs to scan (default 10, max 50)
+
+        Returns:
+            JSON string with ingestion statistics
+        """
+        from .pr_reviews import PRReviewIngester
+
+        count = min(count, 50)  # Cap at 50
+        logger.info(f"Ingesting PR reviews: repo={repo}, count={count}")
+
+        ingester = PRReviewIngester(self.kg, self.config)
+        result = await ingester.ingest(repo=repo, count=count)
+
+        return json.dumps({
+            "prs_scanned": result.prs_scanned,
+            "prs_skipped": result.prs_skipped,
+            "comments_analyzed": result.comments_analyzed,
+            "constraints_created": result.constraints_created,
+            "constraints_updated": result.constraints_updated,
+            "duration_seconds": result.duration_seconds,
+        })

@@ -339,6 +339,49 @@ class KnowledgeGraph:
                 for row in rows
             ]
 
+    async def entity_exists_for_file(self, file_path: str) -> bool:
+        """Check if any entity exists with the given file_path."""
+        async with aiosqlite.connect(self.entities_db) as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM entities WHERE file_path = ? LIMIT 1", (file_path,)
+            )
+            return await cursor.fetchone() is not None
+
+    async def get_entity_count(self) -> int:
+        """Get total number of entities in the graph."""
+        async with aiosqlite.connect(self.entities_db) as db:
+            cursor = await db.execute("SELECT COUNT(*) FROM entities")
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    # ============================================================================
+    # Relationship Operations
+    # ============================================================================
+
+    async def create_relationship(self, relationship: Relationship) -> str:
+        """Create or update a relationship between entities."""
+        async with aiosqlite.connect(self.relationships_db) as db:
+            await db.execute(
+                """
+                INSERT OR REPLACE INTO relationships
+                (id, source_entity_id, target_entity_id, relationship_type,
+                 weight, first_seen, last_seen, evidence_count)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    relationship.id,
+                    relationship.source_entity_id,
+                    relationship.target_entity_id,
+                    relationship.relationship_type,
+                    relationship.weight,
+                    relationship.first_seen.isoformat(),
+                    relationship.last_seen.isoformat(),
+                    relationship.evidence_count,
+                ),
+            )
+            await db.commit()
+        return relationship.id
+
     # ============================================================================
     # Fact Operations
     # ============================================================================

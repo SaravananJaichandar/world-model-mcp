@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 from world_model_server.knowledge_graph import KnowledgeGraph
-from world_model_server.models import Entity, Fact, Constraint
+from world_model_server.models import Entity, Fact, Constraint, Relationship
 
 
 @pytest.fixture
@@ -203,3 +203,43 @@ async def test_constraint_double_star_glob(kg):
     # Wrong directory should NOT match
     unmatched = await kg.get_constraints("src/utils/helpers.ts")
     assert len(unmatched) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_relationship(kg):
+    """Test creating a relationship between two entities."""
+    entity1 = Entity(entity_type="file", name="auth.ts", file_path="src/auth.ts")
+    entity2 = Entity(entity_type="file", name="utils.ts", file_path="src/utils.ts")
+    await kg.create_entity(entity1)
+    await kg.create_entity(entity2)
+
+    rel = Relationship(
+        source_entity_id=entity1.id,
+        target_entity_id=entity2.id,
+        relationship_type="imports",
+    )
+    rid = await kg.create_relationship(rel)
+    assert rid == rel.id
+
+
+@pytest.mark.asyncio
+async def test_entity_exists_for_file(kg):
+    """Test checking entity existence by file path."""
+    assert not await kg.entity_exists_for_file("src/auth.ts")
+
+    entity = Entity(entity_type="file", name="auth.ts", file_path="src/auth.ts")
+    await kg.create_entity(entity)
+
+    assert await kg.entity_exists_for_file("src/auth.ts")
+    assert not await kg.entity_exists_for_file("src/other.ts")
+
+
+@pytest.mark.asyncio
+async def test_get_entity_count(kg):
+    """Test entity count."""
+    assert await kg.get_entity_count() == 0
+
+    await kg.create_entity(Entity(entity_type="function", name="foo", file_path="a.py"))
+    await kg.create_entity(Entity(entity_type="function", name="bar", file_path="b.py"))
+
+    assert await kg.get_entity_count() == 2

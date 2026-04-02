@@ -192,6 +192,40 @@ async def main():
                     "required": ["file_path"],
                 },
             ),
+            Tool(
+                name="seed_project",
+                description="Scan the project codebase and populate the knowledge graph with entities and relationships from existing code",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "project_dir": {
+                            "type": "string",
+                            "description": "Project directory path (defaults to current)",
+                        },
+                        "force": {
+                            "type": "boolean",
+                            "description": "Re-seed already processed files",
+                        },
+                    },
+                },
+            ),
+            Tool(
+                name="ingest_pr_reviews",
+                description="Pull GitHub PR review comments and convert them into learned constraints in the knowledge graph",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "repo": {
+                            "type": "string",
+                            "description": "GitHub repo (owner/repo). Auto-detected from git remote if omitted.",
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Number of recent PRs to scan (default 10, max 50)",
+                        },
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -248,6 +282,20 @@ async def main():
                 result = await tools.get_related_bugs(
                     file_path=arguments["file_path"],
                     change_description=arguments.get("change_description", ""),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "seed_project":
+                result = await tools.seed_project(
+                    project_dir=arguments.get("project_dir"),
+                    force=arguments.get("force", False),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "ingest_pr_reviews":
+                result = await tools.ingest_pr_reviews(
+                    repo=arguments.get("repo"),
+                    count=arguments.get("count", 10),
                 )
                 return [TextContent(type="text", text=result)]
 

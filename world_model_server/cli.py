@@ -37,6 +37,44 @@ def setup_command(args):
         console.print(f"[bold red]Setup failed: {e}[/bold red]")
         sys.exit(1)
 
+    # Auto-seed the knowledge graph from existing codebase
+    console.print("\nSeeding knowledge graph from existing codebase...")
+    seed_args = argparse.Namespace(project_dir=str(project_dir), force=False)
+    seed_command(seed_args)
+
+
+def seed_command(args):
+    """Seed the knowledge graph from existing codebase."""
+    import asyncio
+    from .seeder import ProjectSeeder
+    from .knowledge_graph import KnowledgeGraph
+    from .config import Config
+
+    project_dir = Path(args.project_dir).resolve()
+    config = Config.from_env()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+        seeder = ProjectSeeder(str(project_dir), kg, config)
+        result = await seeder.seed(force=args.force)
+
+        console.print(f"\n[bold]Seeding complete:[/bold]")
+        console.print(f"  Files scanned: {result.files_scanned}")
+        console.print(f"  Files seeded:  {result.files_seeded}")
+        console.print(f"  Entities:      {result.entities_created}")
+        console.print(f"  Relationships: {result.relationships_created}")
+        console.print(f"  Skipped:       {result.skipped_files}")
+        console.print(f"  Duration:      {result.duration_seconds}s")
+
+        if result.errors:
+            console.print(f"\n[yellow]Errors ({len(result.errors)}):[/yellow]")
+            for err in result.errors[:5]:
+                console.print(f"  {err}")
+
+    asyncio.run(run())
+
 
 def status_command(args):
     """Show world model status for a project."""
@@ -87,6 +125,16 @@ def main():
         "--project-dir", type=str, default=".", help="Project directory"
     )
     setup_parser.set_defaults(func=setup_command)
+
+    # Seed command
+    seed_parser = subparsers.add_parser("seed", help="Seed knowledge graph from codebase")
+    seed_parser.add_argument(
+        "--project-dir", type=str, default=".", help="Project directory"
+    )
+    seed_parser.add_argument(
+        "--force", action="store_true", help="Re-seed already processed files"
+    )
+    seed_parser.set_defaults(func=seed_command)
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show world model status")
