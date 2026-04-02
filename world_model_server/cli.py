@@ -14,6 +14,8 @@ console = Console()
 def setup_command(args):
     """Run the full setup process."""
     import asyncio
+    import json
+    import shutil
     from .knowledge_graph import KnowledgeGraph
 
     project_dir = Path(args.project_dir).resolve()
@@ -30,6 +32,61 @@ def setup_command(args):
     hooks_dir.mkdir(parents=True, exist_ok=True)
     console.print("Created .claude/world-model/ and .claude/hooks/")
 
+    # Copy bundled hooks
+    bundled_hooks_dir = Path(__file__).parent / "hooks"
+    if bundled_hooks_dir.exists():
+        hooks_copied = 0
+        for js_file in bundled_hooks_dir.glob("*.js"):
+            shutil.copy2(js_file, hooks_dir / js_file.name)
+            hooks_copied += 1
+        console.print(f"Installed {hooks_copied} hook scripts")
+    else:
+        console.print("[yellow]Warning: bundled hooks not found, hooks will not fire[/yellow]")
+
+    # Generate settings.json with correct hook paths
+    settings_path = claude_dir / "settings.json"
+    if not settings_path.exists():
+        settings = {
+            "hooks": {
+                "PostToolUse": [{
+                    "matcher": "Edit|Write|Bash|Read",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-capture.js",
+                        "timeout": 10,
+                    }],
+                }],
+                "PreToolUse": [{
+                    "matcher": "Edit|Write",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-validate.js",
+                        "timeout": 8,
+                    }],
+                }],
+                "SessionStart": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js start",
+                        "timeout": 5,
+                    }],
+                }],
+                "SessionEnd": [{
+                    "matcher": "*",
+                    "hooks": [{
+                        "type": "command",
+                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js end",
+                        "timeout": 10,
+                    }],
+                }],
+            }
+        }
+        settings_path.write_text(json.dumps(settings, indent=2))
+        console.print("Generated .claude/settings.json with hook configuration")
+    else:
+        console.print("Existing .claude/settings.json preserved")
+
     # Initialize database
     async def init_db():
         kg = KnowledgeGraph(str(world_model_dir))
@@ -38,15 +95,12 @@ def setup_command(args):
     asyncio.run(init_db())
     console.print("Initialized knowledge graph databases")
 
-    console.print("\nSetup complete.")
-    console.print("Next steps:")
-    console.print("  1. Restart Claude Code")
-    console.print("  2. Run: world-model seed")
-
     # Auto-seed the knowledge graph from existing codebase
     console.print("\nSeeding knowledge graph from existing codebase...")
     seed_args = argparse.Namespace(project_dir=str(project_dir), force=False)
     seed_command(seed_args)
+
+    console.print("\nSetup complete. Restart Claude Code to activate hooks.")
 
 
 def seed_command(args):

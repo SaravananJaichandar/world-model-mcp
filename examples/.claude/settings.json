@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/dist/world-model-capture.js",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-capture.js",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/dist/world-model-validate.js",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-validate.js",
             "timeout": 8
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/dist/world-model-session.js start",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js start",
             "timeout": 5
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/dist/world-model-session.js end",
+            "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js end",
             "timeout": 10
           }
         ]
