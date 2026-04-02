@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.1.1)** -- Core knowledge graph and MCP tools work. Hooks pipeline and learning loop are functional but early-stage. Contributions welcome.
+> **Status: Alpha (v0.2.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -23,18 +23,28 @@ Think of it as giving Claude a **long-term memory** of your project.
 
 ## Quick Start
 
-### Installation (3 commands)
+### Installation
 
 ```bash
 # 1. Install the package
 pip install world-model-mcp
 
-# 2. Setup in your project
+# 2. Setup in your project (auto-seeds the knowledge graph from existing code)
 cd /path/to/your/project
 python -m world_model_server.cli setup
 
 # 3. Restart Claude Code
-# Done! The world model is now active
+# Done! The world model is pre-populated and active
+```
+
+You can also re-seed or seed manually at any time:
+
+```bash
+# Seed from existing codebase
+world-model seed
+
+# Re-seed with force (re-processes already seeded files)
+world-model seed --force
 ```
 
 ### What Gets Installed
@@ -119,7 +129,7 @@ if (user && user.email) { ... }
                          v
 ┌──────────────────────────────────────────────────────────┐
 │ MCP Server (Python)                                      │
-│ - 6 MCP tools for querying/recording facts               │
+│ - 8 MCP tools for querying/recording/seeding             │
 │ - LLM-powered entity extraction (Claude Haiku)           │
 │ - External linter integration (ESLint, Pylint, Ruff)     │
 └──────────────────────────────────────────────────────────┘
@@ -158,7 +168,7 @@ if (user && user.email) { ... }
 
 ## MCP Tools
 
-Six MCP tools available to Claude Code:
+Eight MCP tools available to Claude Code:
 
 ### 1. `query_fact`
 Check if APIs/functions exist before using them
@@ -219,6 +229,26 @@ result = get_related_bugs(
 # Returns: {bugs: [...], risk_score: float, critical_regions: [...]}
 ```
 
+### 7. `seed_project`
+Scan the codebase and populate the knowledge graph with entities and relationships
+```python
+result = seed_project(
+    project_dir=".",
+    force=False
+)
+# Returns: {files_seeded: int, entities_created: int, relationships_created: int}
+```
+
+### 8. `ingest_pr_reviews`
+Pull GitHub PR review comments and convert team feedback into constraints
+```python
+result = ingest_pr_reviews(
+    repo="owner/repo",  # Auto-detected from git remote if omitted
+    count=10
+)
+# Returns: {prs_scanned: int, constraints_created: int, constraints_updated: int}
+```
+
 ---
 
 ## Documentation
@@ -239,7 +269,7 @@ pytest
 pytest --cov=world_model_server --cov-report=html
 ```
 
-Tests cover knowledge graph CRUD operations, FTS5 search, constraint management, and bug tracking. See [tests/](./tests/) for details.
+40 tests covering knowledge graph CRUD, FTS5 search, constraint management, bug tracking, auto-seeding, and PR review ingestion. See [tests/](./tests/) for details.
 
 ---
 
@@ -317,16 +347,17 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ## Roadmap
 
-### v0.2.0 (Next)
+### v0.2.0 (Current)
+- [x] Auto-seeding: knowledge graph populates from existing codebase on setup
+- [x] PR Review Intelligence: ingest GitHub review comments as constraints
+- [x] Relationship tracking: import and dependency graph between entities
+- [x] 40 tests, 8 MCP tools
+
+### v0.3.0 (Next)
 - [ ] Enhanced entity resolution with fuzzy matching
 - [ ] Multi-language support (Go, Rust, Java)
-- [ ] Performance optimizations (query caching)
-- [ ] Migration tool for database updates
-
-### v0.3.0
 - [ ] Trajectory learning (co-edit patterns)
-- [ ] Structural embeddings
-- [ ] Relationship graph visualization
+- [ ] Performance optimizations (query caching)
 
 ### v0.4.0
 - [ ] World model simulation ("what if" queries)
@@ -355,8 +386,8 @@ Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
 ## Stats
 
 **Project Size**:
-- ~3,500 lines of code
-- 11 Python modules
+- ~4,800 lines of code
+- 13 Python modules
 - 3 TypeScript hook implementations
 
 **Storage Efficiency**:
