@@ -72,10 +72,12 @@ class ProjectSeeder:
 
         if len(files) > MAX_FILES:
             logger.warning(
-                f"Project has {len(files)} files, capping at {MAX_FILES}. "
-                f"Use --force to re-seed specific files."
+                f"Project has {len(files)} supported files, processing first {MAX_FILES} "
+                f"(source directories prioritized). Use --force to re-seed."
             )
             files = files[:MAX_FILES]
+
+        logger.info(f"Collected {len(files)} files to seed")
 
         sem = asyncio.Semaphore(20)
 
@@ -115,7 +117,7 @@ class ProjectSeeder:
 
         try:
             proc = subprocess.run(
-                ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+                ["git", "ls-files", "--cached"],
                 capture_output=True, text=True, cwd=str(self.project_dir),
                 timeout=30,
             )
@@ -130,7 +132,8 @@ class ProjectSeeder:
                 path = self.project_dir / line
                 if self._is_supported(path):
                     files.append(path)
-            return files
+
+            return self._prioritize_files(files)
 
         except (subprocess.TimeoutExpired, FileNotFoundError):
             logger.warning("git not available, falling back to walk")
@@ -147,7 +150,25 @@ class ProjectSeeder:
                 path = Path(root) / fname
                 if self._is_supported(path):
                     files.append(path)
-        return files
+        return self._prioritize_files(files)
+
+    def _prioritize_files(self, files: List[Path]) -> List[Path]:
+        """Sort files so source code directories come before dependencies."""
+        priority_prefixes = ("src/", "app/", "lib/", "services/", "packages/", "core/", "api/")
+
+        def sort_key(path: Path) -> tuple:
+            rel = str(path.relative_to(self.project_dir))
+            # Priority 0: source directories
+            for prefix in priority_prefixes:
+                if rel.startswith(prefix):
+                    return (0, rel)
+            # Priority 1: root-level files
+            if "/" not in rel:
+                return (1, rel)
+            # Priority 2: everything else
+            return (2, rel)
+
+        return sorted(files, key=sort_key)
 
     def _is_supported(self, path: Path) -> bool:
         """Check if a file should be processed."""

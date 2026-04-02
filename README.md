@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.2.3)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
+> **Status: Alpha (v0.2.4)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
