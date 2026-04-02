@@ -204,6 +204,8 @@ Focus on:
             return "go"
         elif file_path.endswith((".rs")):
             return "rust"
+        elif file_path.endswith(".sol"):
+            return "solidity"
         return "unknown"
 
     def _extract_typescript_entities(
@@ -338,8 +340,47 @@ Focus on:
         elif lang == "python":
             entities.extend(self._extract_python_entities(file_path, content, content))
             import_data.extend(self._extract_python_imports(file_path, content))
+        elif lang == "solidity":
+            entities.extend(self._extract_solidity_entities(file_path, content))
 
         return entities, import_data
+
+    def _extract_solidity_entities(self, file_path: str, content: str) -> List[Entity]:
+        """Extract entities from Solidity code."""
+        entities = []
+        seen_names = set()
+
+        # Contracts, interfaces, libraries
+        contract_pattern = r"^(?:abstract\s+)?(?:contract|interface|library)\s+(\w+)"
+        for match in re.finditer(contract_pattern, content, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(entity_type="class", name=name, file_path=file_path, signature=match.group(0).strip())
+                )
+
+        # Functions
+        func_pattern = r"^\s+function\s+(\w+)\s*\("
+        for match in re.finditer(func_pattern, content, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(entity_type="function", name=name, file_path=file_path, signature=f"function {name}(...)")
+                )
+
+        # Events
+        event_pattern = r"^\s+event\s+(\w+)\s*\("
+        for match in re.finditer(event_pattern, content, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(entity_type="api", name=name, file_path=file_path, signature=f"event {name}(...)")
+                )
+
+        return entities
 
     def _extract_python_imports(self, file_path: str, content: str) -> List[Dict]:
         """Extract import statements from Python code."""

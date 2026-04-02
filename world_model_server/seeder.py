@@ -20,7 +20,7 @@ from .models import Entity, Fact, Relationship
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx"}
+SUPPORTED_EXTENSIONS = {".py", ".ts", ".tsx", ".js", ".jsx", ".sol", ".go", ".rs"}
 
 SKIP_DIRS = {
     "node_modules", "dist", "build", "__pycache__", ".git", ".claude",
@@ -30,7 +30,8 @@ SKIP_DIRS = {
 }
 
 MAX_FILE_SIZE = 100 * 1024  # 100KB
-MAX_FILES = 2000
+MAX_FILES_WALK = 5000  # Cap for manual walk fallback only
+# No cap for git ls-files (returns only tracked files)
 
 
 @dataclass
@@ -67,17 +68,18 @@ class ProjectSeeder:
         start = time.time()
         result = SeedResult()
 
-        files = self._collect_files()
+        files, used_git = self._collect_files()
         result.files_scanned = len(files)
 
-        if len(files) > MAX_FILES:
+        # Only cap when using walk fallback (git ls-files already returns only tracked files)
+        if not used_git and len(files) > MAX_FILES_WALK:
             logger.warning(
-                f"Project has {len(files)} supported files, processing first {MAX_FILES} "
-                f"(source directories prioritized). Use --force to re-seed."
+                f"Project has {len(files)} supported files, processing first {MAX_FILES_WALK} "
+                f"(source directories prioritized). Use git to remove the cap."
             )
-            files = files[:MAX_FILES]
+            files = files[:MAX_FILES_WALK]
 
-        logger.info(f"Collected {len(files)} files to seed")
+        logger.info(f"Collected {len(files)} files to seed (git={used_git})")
 
         sem = asyncio.Semaphore(20)
 
@@ -102,17 +104,19 @@ class ProjectSeeder:
         )
         return result
 
-    def _collect_files(self) -> List[Path]:
-        """Collect project files, respecting .gitignore."""
+    def _collect_files(self) -> Tuple[List[Path], bool]:
+        """Collect project files, respecting .gitignore. Returns (files, used_git)."""
         git_dir = self.project_dir / ".git"
 
         if git_dir.exists():
-            return self._collect_via_git()
+            files = self._collect_via_git()
+            if files is not None:
+                return files, True
 
-        return self._collect_via_walk()
+        return self._collect_via_walk(), False
 
-    def _collect_via_git(self) -> List[Path]:
-        """Use git ls-files for precise .gitignore handling."""
+    def _collect_via_git(self) -> Optional[List[Path]]:
+        """Use git ls-files for precise .gitignore handling. Returns None on failure."""
         import subprocess
 
         try:
@@ -123,7 +127,7 @@ class ProjectSeeder:
             )
             if proc.returncode != 0:
                 logger.warning("git ls-files failed, falling back to walk")
-                return self._collect_via_walk()
+                return None
 
             files = []
             for line in proc.stdout.strip().split("\n"):
@@ -137,7 +141,7 @@ class ProjectSeeder:
 
         except (subprocess.TimeoutExpired, FileNotFoundError):
             logger.warning("git not available, falling back to walk")
-            return self._collect_via_walk()
+            return None
 
     def _collect_via_walk(self) -> List[Path]:
         """Manual directory walk with hardcoded skip patterns."""

@@ -82,11 +82,11 @@ def config():
 
 @pytest.mark.asyncio
 async def test_collect_files_filters_extensions(kg, project_dir, config):
-    """Only .py, .ts, .tsx, .js, .jsx files should be collected."""
+    """Only supported language files should be collected."""
     seeder = ProjectSeeder(project_dir, kg, config)
-    files = seeder._collect_files()
+    files, _ = seeder._collect_files()
     extensions = {f.suffix for f in files}
-    assert extensions.issubset({".py", ".ts", ".tsx", ".js", ".jsx"})
+    assert extensions.issubset({".py", ".ts", ".tsx", ".js", ".jsx", ".sol", ".go", ".rs"})
     assert ".json" not in extensions
 
 
@@ -94,7 +94,7 @@ async def test_collect_files_filters_extensions(kg, project_dir, config):
 async def test_collect_files_skips_node_modules(kg, project_dir, config):
     """node_modules directory should be skipped."""
     seeder = ProjectSeeder(project_dir, kg, config)
-    files = seeder._collect_files()
+    files, _ = seeder._collect_files()
     paths = [str(f) for f in files]
     assert not any("node_modules" in p for p in paths)
 

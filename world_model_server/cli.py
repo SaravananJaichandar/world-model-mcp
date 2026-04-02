@@ -96,8 +96,15 @@ def query_command(args):
 
         query = args.query
 
-        # Search entities
+        # Search entities by name
         entities = await kg.find_entities(name=query)
+
+        # Also search by file path for module-level matching
+        file_entities = await kg.find_entities(name=f"{query}.")
+        for fe in file_entities:
+            if fe.id not in {e.id for e in entities}:
+                entities.append(fe)
+
         if entities:
             console.print(f"\n[bold]Entities matching '{query}':[/bold]")
             for e in entities:
