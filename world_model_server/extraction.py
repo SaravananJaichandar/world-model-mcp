@@ -253,41 +253,50 @@ Focus on:
         # Classes
         class_pattern = r"(?:export\s+)?class\s+(\w+)"
         for match in re.finditer(class_pattern, diff):
-            entities.append(
-                Entity(
-                    entity_type="class", name=match.group(1), file_path=file_path
+            name = match.group(1)
+            if name not in [e.name for e in entities]:
+                entities.append(
+                    Entity(
+                        entity_type="class", name=name, file_path=file_path
+                    )
                 )
-            )
 
         return entities
 
     def _extract_python_entities(self, file_path: str, content: str, diff: str) -> List[Entity]:
         """Extract entities from Python code."""
         entities = []
+        seen_names = set()
 
-        # Function definitions
-        func_pattern = r"def\s+(\w+)\s*\((.*?)\)"
+        # Function definitions (supports multiline signatures)
+        func_pattern = r"(?:async\s+)?def\s+(\w+)\s*\("
         for match in re.finditer(func_pattern, diff):
-            entities.append(
-                Entity(
-                    entity_type="function",
-                    name=match.group(1),
-                    file_path=file_path,
-                    signature=f"def {match.group(1)}({match.group(2)})",
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(
+                        entity_type="function",
+                        name=name,
+                        file_path=file_path,
+                        signature=f"def {name}(...)",
+                    )
                 )
-            )
 
-        # Class definitions
-        class_pattern = r"class\s+(\w+)(?:\((.*?)\))?"
-        for match in re.finditer(class_pattern, diff):
-            entities.append(
-                Entity(
-                    entity_type="class",
-                    name=match.group(1),
-                    file_path=file_path,
-                    signature=f"class {match.group(1)}",
+        # Class definitions (handles decorators above the class line)
+        class_pattern = r"^class\s+(\w+)"
+        for match in re.finditer(class_pattern, diff, re.MULTILINE):
+            name = match.group(1)
+            if name not in seen_names:
+                seen_names.add(name)
+                entities.append(
+                    Entity(
+                        entity_type="class",
+                        name=name,
+                        file_path=file_path,
+                        signature=f"class {name}",
+                    )
                 )
-            )
 
         # API routes (Flask/FastAPI)
         route_pattern = r"@(?:app|router)\.(get|post|put|delete|patch)\s*\(\s*['\"]([^'\"]+)['\"]"

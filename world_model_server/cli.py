@@ -13,29 +13,35 @@ console = Console()
 
 def setup_command(args):
     """Run the full setup process."""
-    import subprocess
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
 
     project_dir = Path(args.project_dir).resolve()
 
-    console.print("[bold]🌍 World Model MCP Setup[/bold]")
+    console.print("[bold]World Model MCP Setup[/bold]")
     console.print(f"Project: {project_dir}\n")
 
-    # Run the bash install script
-    script_dir = Path(__file__).parent.parent / "scripts"
-    install_script = script_dir / "install.sh"
+    # Create directories
+    claude_dir = project_dir / ".claude"
+    world_model_dir = claude_dir / "world-model"
+    hooks_dir = claude_dir / "hooks"
 
-    if not install_script.exists():
-        console.print(
-            "[bold red]Error: install.sh not found[/bold red]", style="bold red"
-        )
-        console.print("Please ensure world-model-mcp is properly installed.")
-        sys.exit(1)
+    world_model_dir.mkdir(parents=True, exist_ok=True)
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    console.print("Created .claude/world-model/ and .claude/hooks/")
 
-    try:
-        subprocess.run([str(install_script), str(project_dir)], check=True)
-    except subprocess.CalledProcessError as e:
-        console.print(f"[bold red]Setup failed: {e}[/bold red]")
-        sys.exit(1)
+    # Initialize database
+    async def init_db():
+        kg = KnowledgeGraph(str(world_model_dir))
+        await kg.initialize()
+
+    asyncio.run(init_db())
+    console.print("Initialized knowledge graph databases")
+
+    console.print("\nSetup complete.")
+    console.print("Next steps:")
+    console.print("  1. Restart Claude Code")
+    console.print("  2. Run: world-model seed")
 
     # Auto-seed the knowledge graph from existing codebase
     console.print("\nSeeding knowledge graph from existing codebase...")
