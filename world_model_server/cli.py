@@ -76,6 +76,52 @@ def seed_command(args):
     asyncio.run(run())
 
 
+def query_command(args):
+    """Query the knowledge graph for entities and facts."""
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+
+        query = args.query
+
+        # Search entities
+        entities = await kg.find_entities(name=query)
+        if entities:
+            console.print(f"\n[bold]Entities matching '{query}':[/bold]")
+            for e in entities:
+                sig = f" ({e.signature})" if e.signature else ""
+                console.print(f"  [{e.entity_type}] {e.name}{sig}")
+                if e.file_path:
+                    console.print(f"         {e.file_path}")
+        else:
+            console.print(f"\n[dim]No entities matching '{query}'[/dim]")
+
+        # Search facts
+        try:
+            facts = await kg.query_facts(query)
+            if facts.facts:
+                console.print(f"\n[bold]Facts matching '{query}':[/bold]")
+                for f in facts.facts:
+                    console.print(f"  {f.fact_text}")
+                    console.print(f"         evidence: {f.evidence_path} (confidence: {f.confidence})")
+            else:
+                console.print(f"[dim]No facts matching '{query}'[/dim]")
+        except Exception:
+            console.print(f"[dim]No facts matching '{query}'[/dim]")
+
+        # Summary
+        count = await kg.get_entity_count()
+        console.print(f"\n[dim]Total entities in graph: {count}[/dim]")
+
+    asyncio.run(run())
+
+
 def status_command(args):
     """Show world model status for a project."""
     project_dir = Path(args.project_dir).resolve()
@@ -135,6 +181,14 @@ def main():
         "--force", action="store_true", help="Re-seed already processed files"
     )
     seed_parser.set_defaults(func=seed_command)
+
+    # Query command
+    query_parser = subparsers.add_parser("query", help="Query the knowledge graph")
+    query_parser.add_argument("query", type=str, help="Search term (entity name, function, class)")
+    query_parser.add_argument(
+        "--project-dir", type=str, default=".", help="Project directory"
+    )
+    query_parser.set_defaults(func=query_command)
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show world model status")

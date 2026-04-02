@@ -73,7 +73,7 @@ fi
 
 # Initialize database
 echo "Initializing world model database..."
-python -m world_model_server.init --project-dir "$PROJECT_DIR"
+python3 -m world_model_server.init --project-dir "$PROJECT_DIR"
 
 echo ""
 echo "✅ Installation complete!"

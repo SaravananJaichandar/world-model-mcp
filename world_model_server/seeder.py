@@ -203,6 +203,17 @@ class ProjectSeeder:
             await self.kg.create_entity(entity)
             entity_count += 1
 
+            # Create a searchable fact for each entity so query_fact can find it
+            entity_fact = Fact(
+                fact_text=f"{entity.entity_type} {entity.name} exists in {rel_path}",
+                evidence_type="source_code",
+                evidence_path=rel_path,
+                confidence=0.8,
+                status="canonical",
+                entity_ids=[entity.id],
+            )
+            await self.kg.create_fact(entity_fact)
+
         # Create import relationships
         rel_count = 0
         for imp in import_data:
@@ -214,9 +225,9 @@ class ProjectSeeder:
             await self.kg.create_relationship(rel)
             rel_count += 1
 
-        # Create seeded fact
+        # Create seeded summary fact
         fact = Fact(
-            fact_text=f"File {rel_path} was auto-seeded with {entity_count} entities",
+            fact_text=f"File {rel_path} seeded with {entity_count} entities",
             evidence_type="source_code",
             evidence_path=rel_path,
             confidence=0.7,
