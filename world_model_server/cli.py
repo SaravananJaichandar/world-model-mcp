@@ -274,6 +274,77 @@ def search_global_command(args):
     asyncio.run(run())
 
 
+def health_command(args):
+    """Print memory health report."""
+    import asyncio
+    import json
+    from .knowledge_graph import KnowledgeGraph
+    from .health import build_health_report
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+        report = await build_health_report(kg)
+
+        if args.json:
+            print(report.model_dump_json(indent=2))
+            return
+
+        console.print("[bold]Memory Health Report[/bold]\n")
+        s = report.summary
+        console.print(f"  Orphan entities: {s['orphan_count']}")
+        console.print(f"  Stale facts: {s['stale_fact_count']}")
+        console.print(f"  Contradictions: {s['contradiction_count']}")
+        console.print(f"  Constraint decay candidates: {s['decay_candidate_count']}")
+        console.print(f"  Total DB size: {s['total_db_bytes']:,} bytes\n")
+
+        if report.orphaned_entities:
+            console.print("[bold]Orphan entities (top 5):[/bold]")
+            for e in report.orphaned_entities[:5]:
+                console.print(f"  [{e['entity_type']}] {e['name']} ({e['file_path']})")
+        if report.stale_facts:
+            console.print("\n[bold]Stale facts (top 5):[/bold]")
+            for f in report.stale_facts[:5]:
+                console.print(f"  {f['fact_text'][:100]}")
+        if report.conflicting_facts:
+            console.print("\n[bold]Contradictions (top 5):[/bold]")
+            for c in report.conflicting_facts[:5]:
+                console.print(f"  similarity={c['similarity_score']}: {c['reason']}")
+        if report.constraint_decay_candidates:
+            console.print("\n[bold]Constraint decay candidates:[/bold]")
+            for c in report.constraint_decay_candidates[:5]:
+                console.print(f"  {c['rule_name']} (violations: {c['violation_count']})")
+
+    asyncio.run(run())
+
+
+def decay_command(args):
+    """Apply fact TTL decay - mark unobserved facts as invalid."""
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    if not args.yes:
+        console.print(f"This will mark facts older than {args.days} days as invalid (no re-observation).")
+        answer = input("Continue? [y/N]: ")
+        if answer.lower() != "y":
+            console.print("Aborted.")
+            return
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+        count = await kg.apply_fact_decay(days=args.days)
+        console.print(f"Marked {count} facts as invalid (no re-observation in {args.days} days)")
+
+    asyncio.run(run())
+
+
 def status_command(args):
     """Show world model status for a project."""
     project_dir = Path(args.project_dir).resolve()
@@ -365,6 +436,19 @@ def main():
     search_global_parser.add_argument("query", type=str, help="Search term")
     search_global_parser.add_argument("--limit", type=int, default=20)
     search_global_parser.set_defaults(func=search_global_command)
+
+    # Health command
+    health_parser = subparsers.add_parser("health", help="Print memory health report")
+    health_parser.add_argument("--project-dir", type=str, default=".")
+    health_parser.add_argument("--json", action="store_true", help="Output JSON")
+    health_parser.set_defaults(func=health_command)
+
+    # Decay command
+    decay_parser = subparsers.add_parser("decay", help="Apply fact TTL decay")
+    decay_parser.add_argument("--project-dir", type=str, default=".")
+    decay_parser.add_argument("--days", type=int, default=90)
+    decay_parser.add_argument("--yes", action="store_true", help="Skip confirmation")
+    decay_parser.set_defaults(func=decay_command)
 
     # Status command
     status_parser = subparsers.add_parser("status", help="Show world model status")

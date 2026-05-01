@@ -23,6 +23,10 @@ from .models import (
     BugInfo,
     Decision,
     TestOutcome,
+    RegressionPrediction,
+    SimulationResult,
+    TestFailurePrediction,
+    HealthReport,
 )
 from .config import Config
 from .extraction import EntityExtractor
@@ -190,20 +194,26 @@ class WorldModelTools:
 
         violations = []
         suggestions = []
+        enforcement_history: Dict[str, int] = {}
 
         # 1. Check against learned constraints from the world model
         constraints = await self.kg.get_constraints(file_path)
 
         for constraint in constraints:
             if self._violates_constraint(proposed_content, constraint):
+                # Increment violation counter (v0.5.0)
+                new_count = await self.kg.increment_violation_count(constraint.id)
+                enforcement_history[constraint.rule_name] = new_count
+
                 violations.append(
                     {
                         "rule": constraint.rule_name,
                         "type": constraint.constraint_type,
                         "severity": constraint.severity,
                         "description": constraint.description,
-                        "violation_count": constraint.violation_count,
+                        "violation_count": new_count,
                         "source": "world_model",
+                        "enforcement_summary": f"violated {new_count} times since {constraint.created_at:%Y-%m-%d}",
                     }
                 )
 
@@ -246,7 +256,11 @@ class WorldModelTools:
         confidence = 1.0 if safe else 0.95 if any(v.get("source") == "linter" for v in violations) else 0.9
 
         result = ValidationResult(
-            safe=safe, violations=violations, suggestions=suggestions, confidence=confidence
+            safe=safe,
+            violations=violations,
+            suggestions=suggestions,
+            confidence=confidence,
+            enforcement_history=enforcement_history,
         )
 
         logger.info(f"Validation result: safe={safe}, violations={len(violations)}")
@@ -675,4 +689,142 @@ class WorldModelTools:
             "query": query,
             "results": results,
             "count": len(results),
+        })
+
+    # ============================================================================
+    # v0.5.0: Prediction layer
+    # ============================================================================
+
+    async def predict_regression(
+        self, file_path: str, change_description: Optional[str] = None
+    ) -> str:
+        """Score regression risk for a proposed change."""
+        from .predictions import RegressionPredictor
+        predictor = RegressionPredictor(self.kg)
+        result = await predictor.predict_regression(file_path, change_description)
+        return result.model_dump_json(indent=2)
+
+    async def simulate_change(self, file_path: str, change_description: str) -> str:
+        """Project blast radius and historical outcomes for a proposed change."""
+        from .predictions import RegressionPredictor
+        predictor = RegressionPredictor(self.kg)
+        result = await predictor.simulate_change(file_path, change_description)
+        return result.model_dump_json(indent=2)
+
+    async def predict_test_failures(self, file_paths: List[str]) -> str:
+        """Surface tests likely to fail given file edits."""
+        from .predictions import RegressionPredictor
+        predictor = RegressionPredictor(self.kg)
+        result = await predictor.predict_test_failures(file_paths)
+        return result.model_dump_json(indent=2)
+
+    async def promote_constraint(
+        self, constraint_id: str, target_projects: Optional[List[str]] = None
+    ) -> str:
+        """Promote a constraint from this project to other registered projects."""
+        from .promotion import promote_constraint as _promote
+        results = await _promote(self.kg, constraint_id, target_projects)
+        return json.dumps({
+            "constraint_id": constraint_id,
+            "results": results,
+            "promoted_count": sum(1 for r in results if r["status"] == "success"),
+            "skipped_count": sum(1 for r in results if r["status"] == "skipped"),
+            "error_count": sum(1 for r in results if r["status"] == "error"),
+        })
+
+    # ============================================================================
+    # v0.5.0: Memory health
+    # ============================================================================
+
+    async def get_health_report(self) -> str:
+        """Get a comprehensive memory health report."""
+        from .health import build_health_report
+        report = await build_health_report(self.kg)
+        return report.model_dump_json(indent=2)
+
+    # ============================================================================
+    # v0.5.0: Pre-action context aggregator
+    # ============================================================================
+
+    async def get_context_for_action(self, file_path: str, action_type: str) -> str:
+        """Bundle constraints, decisions, bugs, co-edits, facts, and risk into one call."""
+        import asyncio as _asyncio
+        from .predictions import RegressionPredictor
+
+        constraints_task = self.kg.get_constraints(file_path)
+        decisions_task = self.kg.get_recent_decisions_for_file(file_path, limit=5)
+        bugs_task = self.kg.get_bugs_for_file(file_path)
+        co_edits_task = self.kg.get_co_edited_files(file_path, limit=10)
+
+        # query_facts can fail with FTS5 syntax errors on file paths with dots/slashes
+        try:
+            facts_result = await self.kg.query_facts(file_path)
+            related_facts = facts_result.facts[:5]
+        except Exception:
+            related_facts = []
+
+        constraints = await constraints_task
+        decisions = await decisions_task
+        bugs = await bugs_task
+        co_edits = await co_edits_task
+
+        predictor = RegressionPredictor(self.kg)
+        risk = await predictor.predict_regression(file_path, change_description=action_type)
+
+        return json.dumps({
+            "file_path": file_path,
+            "action_type": action_type,
+            "constraints": [
+                {
+                    "rule": c.rule_name,
+                    "type": c.constraint_type,
+                    "severity": c.severity,
+                    "description": c.description,
+                    "violation_count": c.violation_count,
+                }
+                for c in constraints
+            ],
+            "recent_decisions": [
+                {
+                    "type": d.decision_type,
+                    "timestamp": d.timestamp.isoformat(),
+                    "reasoning": d.reasoning,
+                }
+                for d in decisions
+            ],
+            "recent_bugs": [
+                {
+                    "description": b.description,
+                    "fixed_at": b.fixed_at.isoformat(),
+                    "critical_regions": b.critical_regions,
+                }
+                for b in bugs[:5]
+            ],
+            "co_edit_files": co_edits,
+            "related_facts": [
+                {
+                    "text": f.fact_text[:200],
+                    "evidence_path": f.evidence_path,
+                    "confidence": f.confidence,
+                }
+                for f in related_facts
+            ],
+            "risk_score": risk.risk_score,
+            "risk_level": risk.risk_level,
+            "factors": risk.factors,
+        }, indent=2)
+
+    # ============================================================================
+    # v0.5.0: Contradiction detection
+    # ============================================================================
+
+    async def find_contradictions(
+        self, query: Optional[str] = None, limit: int = 20
+    ) -> str:
+        """Find pairs of facts that contradict each other."""
+        contradictions = await self.kg.find_contradictions(query=query, limit=limit)
+        return json.dumps({
+            "query": query,
+            "contradictions": contradictions,
+            "count": len(contradictions),
         })

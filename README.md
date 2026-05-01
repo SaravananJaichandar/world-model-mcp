@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.4.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
+> **Status: Alpha (v0.5.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -129,7 +129,7 @@ if (user && user.email) { ... }
                          v
 ┌──────────────────────────────────────────────────────────┐
 │ MCP Server (Python)                                      │
-│ - 13 MCP tools for querying/recording/learning            │
+│ - 20 MCP tools for querying/recording/predicting          │
 │ - LLM-powered entity extraction (Claude Haiku)           │
 │ - External linter integration (ESLint, Pylint, Ruff)     │
 └──────────────────────────────────────────────────────────┘
@@ -168,7 +168,7 @@ if (user && user.email) { ... }
 
 ## MCP Tools
 
-Thirteen MCP tools available to Claude Code:
+Twenty MCP tools available to Claude Code:
 
 ### 1. `query_fact`
 Check if APIs/functions exist before using them
@@ -269,7 +269,7 @@ pytest
 pytest --cov=world_model_server --cov-report=html
 ```
 
-40 tests covering knowledge graph CRUD, FTS5 search, constraint management, bug tracking, auto-seeding, and PR review ingestion. See [tests/](./tests/) for details.
+151 tests covering knowledge graph CRUD, FTS5 search, constraint management, bug tracking, auto-seeding, PR review ingestion, decision traces, outcome linkage, trajectory learning, prediction layer, memory health, and contradiction detection. See [tests/](./tests/) for details.
 
 ---
 
@@ -363,19 +363,30 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [ ] Java support: complete multi-language coverage
 - [ ] MCP server pipeline validation on real projects
 
-### v0.4.0 (Current)
+### v0.4.0
 - [x] Outcome linkage: test failures linked to code changes with facts
 - [x] Trajectory learning: co-edit patterns tracked across sessions
 - [x] Decision trace capture: structured log of agent proposals and human corrections
 - [x] Cross-project entity search with project registry
 - [x] 5 new MCP tools (13 total), 104 tests
 
-### v0.5.0
-- [ ] Regression prediction from historical outcome data
-- [ ] World model simulation: "what if" queries for proposed changes
-- [ ] Test failure prediction based on change patterns
-- [ ] Multi-project knowledge transfer: promote constraints across repos
+### v0.5.0 (Current)
+- [x] Regression prediction: weighted risk score from bugs, test failures, violations, co-edits
+- [x] "What if" simulation: blast radius and historical outcomes for proposed changes
+- [x] Test failure prediction: surface tests likely to fail given edited files
+- [x] Multi-project knowledge transfer: promote constraints across registered projects
+- [x] Memory health report: orphans, stale facts, conflicts, decay candidates, DB sizes
+- [x] Fact TTL/decay: explicit world-model decay command for unobserved facts
+- [x] get_context_for_action: pre-edit context bundle for proactive PreToolUse injection
+- [x] Constraint violation tracking with enforcement history
+- [x] find_contradictions: surface facts that disagree
+- [x] 7 new MCP tools (20 total), 2 new CLI subcommands, 151 tests
+
+### v0.6.0 (Next)
 - [ ] AST-based extraction via tree-sitter
+- [ ] Confidence-weighted contradictions with auto-resolution
+- [ ] Background fact decay scheduler (opt-in)
+- [ ] Similarity index for find_contradictions at scale
 
 ---
 

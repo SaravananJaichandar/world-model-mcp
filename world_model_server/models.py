@@ -238,6 +238,10 @@ class ValidationResult(BaseModel):
     violations: List[Dict[str, Any]] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
     confidence: float = Field(1.0, ge=0.0, le=1.0)
+    enforcement_history: Dict[str, int] = Field(
+        default_factory=dict,
+        description="rule_name -> total times violated since the rule was learned",
+    )
 
 
 class QueryFactResult(BaseModel):
@@ -292,3 +296,57 @@ class TestOutcome(BaseModel):
     error_message: Optional[str] = None
     linked_event_ids: List[str] = Field(default_factory=list)
     linked_file_paths: List[str] = Field(default_factory=list)
+
+
+class RegressionPrediction(BaseModel):
+    """Risk score for a proposed change."""
+
+    file_path: str
+    change_description: Optional[str] = None
+    risk_score: float = Field(0.0, ge=0.0, le=1.0)
+    risk_level: Literal["low", "medium", "high"] = "low"
+    factors: Dict[str, int] = Field(default_factory=dict)
+
+
+class SimulationResult(BaseModel):
+    """Projected impact of a proposed change."""
+
+    file_path: str
+    change_description: str
+    blast_radius: List[Dict[str, str]] = Field(default_factory=list)
+    historical_outcomes: List[Dict[str, Any]] = Field(default_factory=list)
+    confidence: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class TestFailurePrediction(BaseModel):
+    """Tests likely to fail given file edits."""
+
+    file_paths: List[str] = Field(default_factory=list)
+    likely_failing_tests: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class ContradictionPair(BaseModel):
+    """Two facts that contradict each other."""
+
+    fact_a_id: str
+    fact_b_id: str
+    fact_a_text: str
+    fact_b_text: str
+    similarity_score: float = Field(0.0, ge=0.0, le=1.0)
+    both_valid: bool
+    reason: str
+
+
+class HealthReport(BaseModel):
+    """Memory health diagnostics."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    orphaned_entities: List[Dict[str, Any]] = Field(default_factory=list)
+    stale_facts: List[Dict[str, Any]] = Field(default_factory=list)
+    conflicting_facts: List[Dict[str, Any]] = Field(default_factory=list)
+    constraint_decay_candidates: List[Dict[str, Any]] = Field(default_factory=list)
+    db_sizes: Dict[str, int] = Field(default_factory=dict)
+    generated_at: datetime = Field(default_factory=datetime.now)
+    summary: Dict[str, int] = Field(default_factory=dict)

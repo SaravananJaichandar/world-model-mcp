@@ -1184,3 +1184,333 @@ class KnowledgeGraph:
                     "last_co_edited": row["last_co_edited"],
                 })
             return results
+
+    # ============================================================================
+    # v0.5.0: Health, Decay, Contradictions, Promotion helpers
+    # ============================================================================
+
+    async def get_orphaned_entities(self, limit: int = 100) -> List[Entity]:
+        """Find entities with no facts or relationships referencing them."""
+        # Build set of referenced entity IDs from facts.entity_ids and relationships
+        referenced: set = set()
+
+        async with aiosqlite.connect(self.facts_db) as db:
+            cursor = await db.execute("SELECT entity_ids FROM facts WHERE entity_ids IS NOT NULL")
+            rows = await cursor.fetchall()
+            for row in rows:
+                try:
+                    ids = json.loads(row[0]) if row[0] else []
+                    referenced.update(ids)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        async with aiosqlite.connect(self.relationships_db) as db:
+            cursor = await db.execute("SELECT source_entity_id, target_entity_id FROM relationships")
+            rows = await cursor.fetchall()
+            for row in rows:
+                referenced.add(row[0])
+                referenced.add(row[1])
+
+        # Find entities not in the referenced set
+        async with aiosqlite.connect(self.entities_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM entities LIMIT ?", (limit * 5,))
+            rows = await cursor.fetchall()
+
+            orphans = []
+            for row in rows:
+                if row["id"] not in referenced:
+                    orphans.append(Entity(
+                        id=row["id"],
+                        entity_type=row["entity_type"],
+                        name=row["name"],
+                        file_path=row["file_path"],
+                        signature=row["signature"],
+                        first_seen=datetime.fromisoformat(row["first_seen"]),
+                        last_updated=datetime.fromisoformat(row["last_updated"]),
+                        metadata=json.loads(row["metadata"]) if row["metadata"] else {},
+                    ))
+                    if len(orphans) >= limit:
+                        break
+            return orphans
+
+    async def get_stale_facts(self, days: int = 30, limit: int = 100) -> List[Fact]:
+        """Find facts older than N days with no re-observation."""
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+
+        async with aiosqlite.connect(self.facts_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM facts WHERE invalid_at IS NULL AND valid_at < ? ORDER BY valid_at ASC LIMIT ?",
+                (cutoff, limit * 3),
+            )
+            rows = await cursor.fetchall()
+
+            # Filter out facts that have a newer fact with the same evidence_path
+            stale = []
+            seen_paths: Dict[str, str] = {}
+            for row in rows:
+                ep = row["evidence_path"]
+                if ep in seen_paths:
+                    # An older fact for same path, skip
+                    continue
+                # Check for newer facts with the same evidence_path
+                cursor2 = await db.execute(
+                    "SELECT 1 FROM facts WHERE evidence_path = ? AND valid_at > ? AND id != ? LIMIT 1",
+                    (ep, row["valid_at"], row["id"]),
+                )
+                if await cursor2.fetchone():
+                    continue
+                seen_paths[ep] = row["id"]
+                stale.append(Fact(
+                    id=row["id"],
+                    fact_text=row["fact_text"],
+                    valid_at=datetime.fromisoformat(row["valid_at"]),
+                    invalid_at=None,
+                    status=row["status"],
+                    entity_ids=json.loads(row["entity_ids"]) if row["entity_ids"] else [],
+                    evidence_type=row["evidence_type"],
+                    evidence_path=ep,
+                    confidence=row["confidence"],
+                    session_id=row["session_id"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                ))
+                if len(stale) >= limit:
+                    break
+            return stale
+
+    async def find_contradictions(
+        self, query: Optional[str] = None, limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Find pairs of facts that contradict each other."""
+        from difflib import SequenceMatcher
+
+        # Pull candidate facts
+        async with aiosqlite.connect(self.facts_db) as db:
+            db.row_factory = aiosqlite.Row
+            if query:
+                cursor = await db.execute(
+                    """SELECT f.* FROM facts f
+                       JOIN facts_fts fts ON f.rowid = fts.rowid
+                       WHERE facts_fts MATCH ? LIMIT 200""",
+                    (query,),
+                )
+            else:
+                cursor = await db.execute("SELECT * FROM facts ORDER BY created_at DESC LIMIT 200")
+            rows = await cursor.fetchall()
+
+        # Cap to 200 for O(n^2) scan
+        facts_data = [dict(r) for r in rows[:200]]
+
+        contradictions = []
+        for i in range(len(facts_data)):
+            for j in range(i + 1, len(facts_data)):
+                a, b = facts_data[i], facts_data[j]
+                # Skip identical facts
+                if a["fact_text"] == b["fact_text"]:
+                    continue
+                ratio = SequenceMatcher(None, a["fact_text"], b["fact_text"]).ratio()
+                if ratio < 0.7:
+                    continue
+
+                # Check for contradiction signals
+                a_entity_ids = set(json.loads(a["entity_ids"]) if a["entity_ids"] else [])
+                b_entity_ids = set(json.loads(b["entity_ids"]) if b["entity_ids"] else [])
+                entity_overlap = bool(a_entity_ids & b_entity_ids)
+
+                differ_status = a["status"] != b["status"]
+                differ_validity = (a["invalid_at"] is None) != (b["invalid_at"] is None)
+
+                if differ_status or differ_validity or (entity_overlap and ratio >= 0.85):
+                    reasons = []
+                    if differ_status:
+                        reasons.append(f"status: {a['status']} vs {b['status']}")
+                    if differ_validity:
+                        reasons.append("one invalidated, other still valid")
+                    if entity_overlap and ratio >= 0.85:
+                        reasons.append("same entity, similar text")
+                    contradictions.append({
+                        "fact_a_id": a["id"],
+                        "fact_b_id": b["id"],
+                        "fact_a_text": a["fact_text"],
+                        "fact_b_text": b["fact_text"],
+                        "similarity_score": round(ratio, 3),
+                        "both_valid": a["invalid_at"] is None and b["invalid_at"] is None,
+                        "reason": "; ".join(reasons) or "high similarity",
+                    })
+                    if len(contradictions) >= limit:
+                        return contradictions
+        return contradictions
+
+    async def apply_fact_decay(self, days: int = 90) -> int:
+        """Mark facts with no re-observation in N days as invalid."""
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        now = datetime.now().isoformat()
+
+        async with aiosqlite.connect(self.facts_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT id, evidence_path, entity_ids, valid_at FROM facts WHERE invalid_at IS NULL AND valid_at < ?",
+                (cutoff,),
+            )
+            candidates = await cursor.fetchall()
+
+            decayed = 0
+            for row in candidates:
+                ep = row["evidence_path"]
+                # Check for re-observation by evidence_path
+                cursor2 = await db.execute(
+                    "SELECT 1 FROM facts WHERE evidence_path = ? AND valid_at > ? AND id != ? LIMIT 1",
+                    (ep, row["valid_at"], row["id"]),
+                )
+                if await cursor2.fetchone():
+                    continue
+
+                # Mark invalid
+                await db.execute(
+                    "UPDATE facts SET invalid_at = ? WHERE id = ?",
+                    (now, row["id"]),
+                )
+                decayed += 1
+
+            await db.commit()
+
+        self._cache_invalidate("facts:")
+        return decayed
+
+    async def increment_violation_count(self, constraint_id: str) -> int:
+        """Increment a constraint's violation count and update last_violated."""
+        now = datetime.now().isoformat()
+        async with aiosqlite.connect(self.constraints_db) as db:
+            await db.execute(
+                "UPDATE constraints SET violation_count = violation_count + 1, last_violated = ? WHERE id = ?",
+                (now, constraint_id),
+            )
+            await db.commit()
+            cursor = await db.execute(
+                "SELECT violation_count FROM constraints WHERE id = ?", (constraint_id,)
+            )
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+    async def get_constraint_decay_candidates(self, days: int = 30) -> List[Constraint]:
+        """Constraints not violated in N days but with non-zero violation count."""
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+
+        async with aiosqlite.connect(self.constraints_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                """SELECT * FROM constraints
+                   WHERE violation_count > 0
+                   AND (last_violated IS NULL OR last_violated < ?)
+                   ORDER BY last_violated ASC""",
+                (cutoff,),
+            )
+            rows = await cursor.fetchall()
+            return [
+                Constraint(
+                    id=row["id"],
+                    constraint_type=row["constraint_type"],
+                    rule_name=row["rule_name"],
+                    file_pattern=row["file_pattern"],
+                    description=row["description"],
+                    violation_count=row["violation_count"],
+                    last_violated=datetime.fromisoformat(row["last_violated"]) if row["last_violated"] else None,
+                    examples=json.loads(row["examples"]) if row["examples"] else [],
+                    severity=row["severity"],
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                )
+                for row in rows
+            ]
+
+    async def get_constraint_by_id(self, constraint_id: str) -> Optional[Constraint]:
+        """Fetch a single constraint by id."""
+        async with aiosqlite.connect(self.constraints_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT * FROM constraints WHERE id = ?", (constraint_id,)
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return Constraint(
+                id=row["id"],
+                constraint_type=row["constraint_type"],
+                rule_name=row["rule_name"],
+                file_pattern=row["file_pattern"],
+                description=row["description"],
+                violation_count=row["violation_count"],
+                last_violated=datetime.fromisoformat(row["last_violated"]) if row["last_violated"] else None,
+                examples=json.loads(row["examples"]) if row["examples"] else [],
+                severity=row["severity"],
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+
+    async def constraint_exists_by_rule_name(self, rule_name: str) -> bool:
+        """Check if a constraint with this rule_name exists."""
+        async with aiosqlite.connect(self.constraints_db) as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM constraints WHERE rule_name = ? LIMIT 1", (rule_name,)
+            )
+            return await cursor.fetchone() is not None
+
+    async def get_recent_decisions_for_file(
+        self, file_path: str, limit: int = 5
+    ) -> List[Decision]:
+        """Get recent decisions touching this file."""
+        return await self.get_decisions(file_path=file_path, limit=limit)
+
+    async def get_test_failure_rates(
+        self, file_paths: List[str], min_runs: int = 1
+    ) -> List[Dict[str, Any]]:
+        """Aggregate failure rates per test for the given files."""
+        # Collect all outcomes touching any of the files
+        outcomes_by_test: Dict[str, List[Dict[str, Any]]] = {}
+        for fp in file_paths:
+            outs = await self.get_outcomes_for_file(fp, limit=100)
+            for o in outs:
+                outcomes_by_test.setdefault(o.test_name, []).append({
+                    "passed": o.passed,
+                    "timestamp": o.timestamp.isoformat(),
+                    "test_file": o.test_file,
+                })
+
+        results = []
+        for test_name, runs in outcomes_by_test.items():
+            if len(runs) < min_runs:
+                continue
+            failures = sum(1 for r in runs if not r["passed"])
+            failure_rate = failures / len(runs)
+            last_failure = max(
+                (r["timestamp"] for r in runs if not r["passed"]),
+                default=None,
+            )
+            results.append({
+                "test_name": test_name,
+                "failure_rate": round(failure_rate, 3),
+                "sample_size": len(runs),
+                "last_failure": last_failure,
+                "test_file": runs[0].get("test_file"),
+            })
+        return sorted(results, key=lambda r: r["failure_rate"], reverse=True)
+
+    async def get_db_sizes(self) -> Dict[str, int]:
+        """Get file sizes of all 9 databases."""
+        dbs = {
+            "entities.db": self.entities_db,
+            "facts.db": self.facts_db,
+            "relationships.db": self.relationships_db,
+            "constraints.db": self.constraints_db,
+            "sessions.db": self.sessions_db,
+            "events.db": self.events_db,
+            "decisions.db": self.decisions_db,
+            "outcomes.db": self.outcomes_db,
+            "trajectories.db": self.trajectories_db,
+        }
+        return {
+            name: path.stat().st_size if path.exists() else 0
+            for name, path in dbs.items()
+        }

@@ -304,6 +304,90 @@ async def main():
                     "required": ["query"],
                 },
             ),
+            Tool(
+                name="predict_regression",
+                description="Score regression risk for a proposed change to a file based on past bugs, test failures, and constraint violations",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "change_description": {"type": "string"},
+                    },
+                    "required": ["file_path"],
+                },
+            ),
+            Tool(
+                name="simulate_change",
+                description="Project blast radius and historical outcomes for a proposed change",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "change_description": {"type": "string"},
+                    },
+                    "required": ["file_path", "change_description"],
+                },
+            ),
+            Tool(
+                name="predict_test_failures",
+                description="Surface tests likely to fail given a set of edited files",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_paths": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["file_paths"],
+                },
+            ),
+            Tool(
+                name="promote_constraint",
+                description="Promote a constraint from this project to all other registered projects",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "constraint_id": {"type": "string"},
+                        "target_projects": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["constraint_id"],
+                },
+            ),
+            Tool(
+                name="get_health_report",
+                description="Memory health diagnostics: orphans, stale facts, contradictions, decay candidates, DB sizes",
+                inputSchema={"type": "object", "properties": {}},
+            ),
+            Tool(
+                name="get_context_for_action",
+                description="Pre-action context bundle: constraints, decisions, bugs, co-edits, related facts, and risk score for a file before editing",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "file_path": {"type": "string"},
+                        "action_type": {
+                            "type": "string",
+                            "enum": ["edit", "create", "delete", "refactor"],
+                        },
+                    },
+                    "required": ["file_path", "action_type"],
+                },
+            ),
+            Tool(
+                name="find_contradictions",
+                description="Find pairs of facts that contradict each other based on similarity and status differences",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -415,6 +499,51 @@ async def main():
             elif name == "search_global":
                 result = await tools.search_global(
                     query=arguments["query"],
+                    limit=arguments.get("limit", 20),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "predict_regression":
+                result = await tools.predict_regression(
+                    file_path=arguments["file_path"],
+                    change_description=arguments.get("change_description"),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "simulate_change":
+                result = await tools.simulate_change(
+                    file_path=arguments["file_path"],
+                    change_description=arguments["change_description"],
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "predict_test_failures":
+                result = await tools.predict_test_failures(
+                    file_paths=arguments["file_paths"],
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "promote_constraint":
+                result = await tools.promote_constraint(
+                    constraint_id=arguments["constraint_id"],
+                    target_projects=arguments.get("target_projects"),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_health_report":
+                result = await tools.get_health_report()
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_context_for_action":
+                result = await tools.get_context_for_action(
+                    file_path=arguments["file_path"],
+                    action_type=arguments["action_type"],
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "find_contradictions":
+                result = await tools.find_contradictions(
+                    query=arguments.get("query"),
                     limit=arguments.get("limit", 20),
                 )
                 return [TextContent(type="text", text=result)]
