@@ -25,7 +25,11 @@ Think of it as giving Claude a **long-term memory** of your project.
 
 ## Quick Start
 
-### Installation
+### Option 1: Desktop Extension (one-click for Claude Desktop)
+
+Download the latest `.mcpb` from [Releases](https://github.com/SaravananJaichandar/world-model-mcp/releases/latest) and drag it into Claude Desktop. Auto-installs hooks, MCP server config, and dependencies.
+
+### Option 2: pip install (Claude Code CLI / IDE plugins)
 
 ```bash
 # 1. Install the package
