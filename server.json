@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
   "name": "io.github.SaravananJaichandar/world-model-mcp",
-  "description": "Temporal knowledge graph for codebases. Captures decision traces, links test failures to code changes, learns co-edit patterns, predicts regression risk, and enforces learned constraints at the edit boundary via a PreToolUse hook.",
+  "description": "Temporal knowledge graph for codebases with constraint enforcement at the edit boundary.",
   "version": "0.6.0",
   "repository": {
     "url": "https://github.com/SaravananJaichandar/world-model-mcp",
