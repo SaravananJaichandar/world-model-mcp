@@ -1,0 +1,49 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+
+# Tests (not needed at runtime)
+tests/
+.pytest_cache/
+
+# Dev tooling
+.git/
+.github/
+.gitignore
+.dockerignore
+.mypy_cache/
+.ruff_cache/
+
+# Hooks source (only the bundled .js files in world_model_server/hooks/ are needed)
+hooks/src/
+hooks/node_modules/
+hooks/dist/
+hooks/package*.json
+hooks/tsconfig.json
+
+# Examples (not needed at runtime)
+examples/
+
+# Scripts (not needed at runtime)
+scripts/
+
+# Data
+.claude/
+.world-model/
+*.db
+*.db-*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Misc
+QUICKSTART.md
+RELEASE_NOTES.md
+CONTRIBUTING.md
+manifest.json
