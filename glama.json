@@ -1,0 +1,27 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["SaravananJaichandar"],
+  "name": "world-model-mcp",
+  "description": "Temporal knowledge graph for codebases. Captures decision traces, links test failures to code changes, learns co-edit patterns, predicts regression risk, and enforces learned constraints at the edit boundary via a PreToolUse hook.",
+  "license": "MIT",
+  "homepage": "https://github.com/SaravananJaichandar/world-model-mcp",
+  "repository": "https://github.com/SaravananJaichandar/world-model-mcp",
+  "categories": ["knowledge-and-memory", "developer-tools"],
+  "keywords": [
+    "knowledge-graph",
+    "temporal",
+    "context-graph",
+    "memory",
+    "claude-code",
+    "constraint-enforcement",
+    "decision-traces",
+    "regression-prediction"
+  ],
+  "languages": ["python"],
+  "runtime": "python",
+  "transport": "stdio",
+  "install": {
+    "pip": "pip install world-model-mcp"
+  },
+  "tools_count": 22
+}
