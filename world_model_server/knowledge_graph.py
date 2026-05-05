@@ -90,6 +90,82 @@ class KnowledgeGraph:
         await self._create_decisions_schema()
         await self._create_outcomes_schema()
         await self._create_trajectories_schema()
+        await self._run_migrations()
+
+    async def _existing_columns(self, db, table: str) -> set:
+        """Return set of column names for a table via PRAGMA table_info."""
+        cursor = await db.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        return {row[1] for row in rows}
+
+    async def _run_migrations(self) -> None:
+        """v0.6.0: Apply backward-compatible schema migrations.
+
+        Adds columns for transcript pointers (F2) and content_hash dedup (F3).
+        All ALTERs are idempotent via column existence checks.
+        """
+        import hashlib as _hashlib
+
+        # facts: add transcript pointers + content_hash
+        async with aiosqlite.connect(self.facts_db) as db:
+            cols = await self._existing_columns(db, "facts")
+            if "transcript_session_id" not in cols:
+                await db.execute("ALTER TABLE facts ADD COLUMN transcript_session_id TEXT")
+            if "line_start" not in cols:
+                await db.execute("ALTER TABLE facts ADD COLUMN line_start INTEGER")
+            if "line_end" not in cols:
+                await db.execute("ALTER TABLE facts ADD COLUMN line_end INTEGER")
+            if "content_hash" not in cols:
+                await db.execute("ALTER TABLE facts ADD COLUMN content_hash TEXT")
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_hash ON facts(content_hash)"
+                )
+            # Always backfill any NULL content_hash rows (covers post-migration inserts too)
+            cursor = await db.execute(
+                "SELECT id, fact_text, evidence_path FROM facts WHERE content_hash IS NULL"
+            )
+            rows = await cursor.fetchall()
+            for row_id, fact_text, evidence_path in rows:
+                h = _hashlib.sha256(
+                    f"{fact_text}|{evidence_path or ''}".encode()
+                ).hexdigest()
+                await db.execute(
+                    "UPDATE facts SET content_hash = ? WHERE id = ?", (h, row_id)
+                )
+            await db.commit()
+
+        # decisions: add transcript pointers
+        async with aiosqlite.connect(self.decisions_db) as db:
+            cols = await self._existing_columns(db, "decisions")
+            if "transcript_session_id" not in cols:
+                await db.execute("ALTER TABLE decisions ADD COLUMN transcript_session_id TEXT")
+            if "line_start" not in cols:
+                await db.execute("ALTER TABLE decisions ADD COLUMN line_start INTEGER")
+            if "line_end" not in cols:
+                await db.execute("ALTER TABLE decisions ADD COLUMN line_end INTEGER")
+            await db.commit()
+
+        # constraints: add content_hash + backfill
+        async with aiosqlite.connect(self.constraints_db) as db:
+            cols = await self._existing_columns(db, "constraints")
+            if "content_hash" not in cols:
+                await db.execute("ALTER TABLE constraints ADD COLUMN content_hash TEXT")
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_constraints_hash ON constraints(content_hash)"
+                )
+            # Always backfill any NULL content_hash rows
+            cursor = await db.execute(
+                "SELECT id, rule_name, description FROM constraints WHERE content_hash IS NULL"
+            )
+            rows = await cursor.fetchall()
+            for row_id, rule_name, description in rows:
+                h = _hashlib.sha256(
+                    f"{rule_name}|{description or ''}".encode()
+                ).hexdigest()
+                await db.execute(
+                    "UPDATE constraints SET content_hash = ? WHERE id = ?", (h, row_id)
+                )
+            await db.commit()
 
     async def _create_entities_schema(self) -> None:
         """Create entities table and indexes."""
@@ -1514,3 +1590,105 @@ class KnowledgeGraph:
             name: path.stat().st_size if path.exists() else 0
             for name, path in dbs.items()
         }
+
+    # ============================================================================
+    # v0.6.0: Cross-DB merge for project identity migration (F3)
+    # ============================================================================
+
+    async def merge_from(self, other: "KnowledgeGraph") -> Dict[str, int]:
+        """Merge another KG's data into this one, deduplicating by content_hash.
+
+        Used by `world-model migrate` to consolidate DBs split across path variants.
+        Returns counts of merged vs skipped rows.
+        """
+        import hashlib
+
+        stats = {
+            "facts_merged": 0,
+            "facts_skipped": 0,
+            "constraints_merged": 0,
+            "constraints_skipped": 0,
+        }
+
+        # Merge facts (dedup by content_hash)
+        async with aiosqlite.connect(other.facts_db) as src_db:
+            src_db.row_factory = aiosqlite.Row
+            cursor = await src_db.execute("SELECT * FROM facts")
+            other_rows = await cursor.fetchall()
+
+        async with aiosqlite.connect(self.facts_db) as dst_db:
+            cursor = await dst_db.execute("SELECT content_hash FROM facts WHERE content_hash IS NOT NULL")
+            existing_hashes = {row[0] for row in await cursor.fetchall()}
+
+            for row in other_rows:
+                fact_text = row["fact_text"]
+                evidence_path = row["evidence_path"] or ""
+                content_hash = row["content_hash"] or hashlib.sha256(
+                    f"{fact_text}|{evidence_path}".encode()
+                ).hexdigest()
+
+                if content_hash in existing_hashes:
+                    stats["facts_skipped"] += 1
+                    continue
+
+                await dst_db.execute(
+                    """INSERT OR IGNORE INTO facts
+                    (id, fact_text, valid_at, invalid_at, status, entity_ids, evidence_type,
+                     evidence_path, derived_from, confidence, session_id, created_at,
+                     transcript_session_id, line_start, line_end, content_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        row["id"], row["fact_text"], row["valid_at"], row["invalid_at"],
+                        row["status"], row["entity_ids"], row["evidence_type"],
+                        row["evidence_path"], row["derived_from"], row["confidence"],
+                        row["session_id"], row["created_at"],
+                        row["transcript_session_id"] if "transcript_session_id" in row.keys() else None,
+                        row["line_start"] if "line_start" in row.keys() else None,
+                        row["line_end"] if "line_end" in row.keys() else None,
+                        content_hash,
+                    ),
+                )
+                existing_hashes.add(content_hash)
+                stats["facts_merged"] += 1
+            await dst_db.commit()
+
+        # Merge constraints (dedup by content_hash)
+        async with aiosqlite.connect(other.constraints_db) as src_db:
+            src_db.row_factory = aiosqlite.Row
+            cursor = await src_db.execute("SELECT * FROM constraints")
+            other_rows = await cursor.fetchall()
+
+        async with aiosqlite.connect(self.constraints_db) as dst_db:
+            cursor = await dst_db.execute(
+                "SELECT content_hash FROM constraints WHERE content_hash IS NOT NULL"
+            )
+            existing_hashes = {row[0] for row in await cursor.fetchall()}
+
+            for row in other_rows:
+                rule_name = row["rule_name"]
+                description = row["description"] or ""
+                content_hash = row["content_hash"] or hashlib.sha256(
+                    f"{rule_name}|{description}".encode()
+                ).hexdigest()
+
+                if content_hash in existing_hashes:
+                    stats["constraints_skipped"] += 1
+                    continue
+
+                await dst_db.execute(
+                    """INSERT OR IGNORE INTO constraints
+                    (id, constraint_type, rule_name, file_pattern, description,
+                     violation_count, last_violated, examples, severity, created_at, content_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        row["id"], row["constraint_type"], row["rule_name"],
+                        row["file_pattern"], row["description"], row["violation_count"],
+                        row["last_violated"], row["examples"], row["severity"],
+                        row["created_at"], content_hash,
+                    ),
+                )
+                existing_hashes.add(content_hash)
+                stats["constraints_merged"] += 1
+            await dst_db.commit()
+
+        return stats

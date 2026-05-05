@@ -1,0 +1,51 @@
+{
+  "manifest_version": "0.2",
+  "name": "world-model-mcp",
+  "display_name": "World Model",
+  "version": "0.6.0",
+  "description": "The event clock for coding agents. Captures decision traces from Claude Code sessions, links them to test outcomes, learns trajectories, and enforces constraints at the edit boundary.",
+  "long_description": "world-model-mcp builds a temporal knowledge graph for your codebase: entities (functions, classes, APIs), facts with valid_at/invalid_at timestamps, learned constraints from corrections, and decision traces. It includes regression prediction, what-if simulation, fact contradiction detection, memory health reports, and a PreToolUse hook that denies edits matching hard constraints learned from prior corrections.",
+  "author": {
+    "name": "SaravananJaichandar",
+    "url": "https://github.com/SaravananJaichandar"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SaravananJaichandar/world-model-mcp",
+  "repository": "https://github.com/SaravananJaichandar/world-model-mcp",
+  "keywords": ["mcp", "claude-code", "knowledge-graph", "memory", "context-graph", "temporal"],
+  "server": {
+    "type": "python",
+    "entry_point": "world_model_server.server",
+    "mcp_config": {
+      "command": "python3",
+      "args": ["-m", "world_model_server.server"],
+      "env": {
+        "WORLD_MODEL_DB_PATH": "${__dirname}/.claude/world-model"
+      }
+    }
+  },
+  "hooks": [
+    {
+      "event": "PreToolUse",
+      "matcher": "Edit|Write|MultiEdit",
+      "command": "node ${__dirname}/hooks/world-model-validate.js",
+      "timeout": 8
+    },
+    {
+      "event": "PostToolUse",
+      "matcher": "Edit|Write|Bash|Read",
+      "command": "node ${__dirname}/hooks/world-model-capture.js",
+      "timeout": 10
+    },
+    {
+      "event": "SessionStart",
+      "command": "node ${__dirname}/hooks/world-model-session.js start",
+      "timeout": 5
+    },
+    {
+      "event": "SessionEnd",
+      "command": "node ${__dirname}/hooks/world-model-session.js end",
+      "timeout": 10
+    }
+  ]
+}

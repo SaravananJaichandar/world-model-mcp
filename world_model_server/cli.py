@@ -17,6 +17,7 @@ def setup_command(args):
     import json
     import shutil
     from .knowledge_graph import KnowledgeGraph
+    from .project_identity import get_or_create_project_id
 
     project_dir = Path(args.project_dir).resolve()
 
@@ -31,6 +32,10 @@ def setup_command(args):
     world_model_dir.mkdir(parents=True, exist_ok=True)
     hooks_dir.mkdir(parents=True, exist_ok=True)
     console.print("Created .claude/world-model/ and .claude/hooks/")
+
+    # v0.6.0: Create or update project identity
+    metadata = get_or_create_project_id(project_dir)
+    console.print(f"Project ID: {metadata['project_id']}")
 
     # Copy bundled hooks
     bundled_hooks_dir = Path(__file__).parent / "hooks"
@@ -231,13 +236,71 @@ def decisions_command(args):
 def register_command(args):
     """Register current project for cross-project search."""
     from .registry import ProjectRegistry
+    from .project_identity import read_project_metadata
 
     project_dir = Path(args.project_dir).resolve()
     db_path = str(project_dir / ".claude" / "world-model")
     project_name = project_dir.name
 
-    ProjectRegistry.register(project_name, db_path)
+    metadata = read_project_metadata(project_dir)
+    project_id = metadata.get("project_id") if metadata else None
+
+    ProjectRegistry.register(project_name, db_path, project_id=project_id)
     console.print(f"Registered project: {project_name} -> {db_path}")
+    if project_id:
+        console.print(f"  Project ID: {project_id}")
+
+
+def migrate_command(args):
+    """Detect and merge duplicate KGs across path variants for the same project_id."""
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
+    from .registry import ProjectRegistry
+    from .project_identity import read_project_metadata
+
+    project_dir = Path(args.project_dir).resolve()
+    metadata = read_project_metadata(project_dir)
+
+    if not metadata:
+        console.print("[yellow]No project identity found. Run: world-model setup[/yellow]")
+        return
+
+    project_id = metadata["project_id"]
+    matches = ProjectRegistry.find_by_project_id(project_id)
+
+    console.print(f"[bold]Migrating project_id={project_id}[/bold]")
+    console.print(f"Found {len(matches)} registry entries with matching project_id\n")
+
+    if len(matches) <= 1:
+        console.print("[dim]Nothing to merge.[/dim]")
+        return
+
+    if args.dry_run:
+        console.print("[yellow]DRY RUN - no changes will be made[/yellow]")
+        for m in matches:
+            console.print(f"  {m['name']}: {m['db_path']}")
+        return
+
+    # Pick the most recently modified DB as primary
+    primary_path = matches[0]["db_path"]
+    others = matches[1:]
+
+    async def run():
+        primary = KnowledgeGraph(primary_path)
+        await primary.initialize()
+
+        total = {"facts_merged": 0, "facts_skipped": 0, "constraints_merged": 0, "constraints_skipped": 0}
+        for other_meta in others:
+            other = KnowledgeGraph(other_meta["db_path"])
+            await other.initialize()
+            stats = await primary.merge_from(other)
+            console.print(f"  Merged from {other_meta['name']}: {stats}")
+            for k, v in stats.items():
+                total[k] = total.get(k, 0) + v
+
+        console.print(f"\n[bold]Total: {total}[/bold]")
+
+    asyncio.run(run())
 
 
 def projects_command(args):
@@ -341,6 +404,71 @@ def decay_command(args):
         await kg.initialize()
         count = await kg.apply_fact_decay(days=args.days)
         console.print(f"Marked {count} facts as invalid (no re-observation in {args.days} days)")
+
+    asyncio.run(run())
+
+
+def recall_command(args):
+    """Recall a session transcript by ID."""
+    import json
+    from .transcript import read_range
+
+    line_start = args.line_start
+    line_end = args.line_end
+
+    if args.lines:
+        # Format: START:END
+        try:
+            parts = args.lines.split(":")
+            line_start = int(parts[0]) if parts[0] else None
+            line_end = int(parts[1]) if len(parts) > 1 and parts[1] else None
+        except (ValueError, IndexError):
+            console.print(f"[red]Invalid --lines format. Use START:END[/red]")
+            return
+
+    result = read_range(args.session_id, line_start=line_start, line_end=line_end)
+
+    if "error" in result:
+        console.print(f"[red]{result['error']}[/red]")
+        return
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return
+
+    console.print(f"[bold]Session: {result['session_id']}[/bold]")
+    console.print(f"[dim]Path: {result['path']}[/dim]")
+    console.print(f"[dim]Total lines: {result['total_lines']}[/dim]\n")
+
+    for entry in result["lines"]:
+        line_num = entry.get("_line", "?")
+        if "_error" in entry:
+            console.print(f"[dim]{line_num}:[/dim] [red]{entry.get('_raw', '')[:100]}[/red]")
+        else:
+            entry_type = entry.get("type", "?")
+            console.print(f"[dim]{line_num}:[/dim] [{entry_type}]")
+
+
+def export_claude_md_command(args):
+    """Export a CLAUDE.md from the knowledge graph."""
+    import asyncio
+    from .knowledge_graph import KnowledgeGraph
+    from .claude_md_generator import generate_claude_md
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+        md = await generate_claude_md(kg, max_constraints=args.max_constraints)
+
+        if args.output and args.output != "-":
+            output_path = Path(args.output)
+            output_path.write_text(md)
+            console.print(f"Wrote {len(md)} chars to {output_path}")
+        else:
+            print(md)
 
     asyncio.run(run())
 
@@ -451,6 +579,28 @@ def main():
     decay_parser.set_defaults(func=decay_command)
 
     # Status command
+    # Recall command (v0.6.0)
+    recall_parser = subparsers.add_parser("recall", help="Recall a Claude Code session transcript")
+    recall_parser.add_argument("session_id", type=str, help="Session UUID")
+    recall_parser.add_argument("--lines", type=str, help="Line range as START:END")
+    recall_parser.add_argument("--line-start", type=int, help="Start line (1-indexed)")
+    recall_parser.add_argument("--line-end", type=int, help="End line (inclusive)")
+    recall_parser.add_argument("--json", action="store_true", help="Output JSON")
+    recall_parser.set_defaults(func=recall_command)
+
+    # Export CLAUDE.md command (v0.6.0)
+    export_md_parser = subparsers.add_parser("export-claude-md", help="Export a CLAUDE.md from the knowledge graph")
+    export_md_parser.add_argument("--project-dir", type=str, default=".")
+    export_md_parser.add_argument("--output", type=str, default="-", help="Output path (- for stdout)")
+    export_md_parser.add_argument("--max-constraints", type=int, default=20)
+    export_md_parser.set_defaults(func=export_claude_md_command)
+
+    # Migrate command (v0.6.0)
+    migrate_parser = subparsers.add_parser("migrate", help="Merge KGs across path variants for same project_id")
+    migrate_parser.add_argument("--project-dir", type=str, default=".")
+    migrate_parser.add_argument("--dry-run", action="store_true", help="Show what would be merged without changes")
+    migrate_parser.set_defaults(func=migrate_command)
+
     status_parser = subparsers.add_parser("status", help="Show world model status")
     status_parser.add_argument(
         "--project-dir", type=str, default=".", help="Project directory"

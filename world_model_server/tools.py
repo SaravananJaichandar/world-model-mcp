@@ -255,15 +255,33 @@ class WorldModelTools:
         safe = len(violations) == 0
         confidence = 1.0 if safe else 0.95 if any(v.get("source") == "linter" for v in violations) else 0.9
 
+        # v0.6.0: classify hard vs soft violations for enforcement_decision
+        hard_threshold = 3  # configurable via env var if needed later
+        wm_violations = [v for v in violations if v.get("source") == "world_model"]
+        hard_violations = [
+            v for v in wm_violations
+            if v.get("severity") == "error" and v.get("violation_count", 0) >= hard_threshold
+        ]
+        if hard_violations:
+            enforcement_decision = "deny"
+        elif wm_violations:
+            enforcement_decision = "warn"
+        elif violations:
+            # Linter-only violations are soft warnings
+            enforcement_decision = "warn"
+        else:
+            enforcement_decision = "proceed"
+
         result = ValidationResult(
             safe=safe,
             violations=violations,
             suggestions=suggestions,
             confidence=confidence,
             enforcement_history=enforcement_history,
+            enforcement_decision=enforcement_decision,
         )
 
-        logger.info(f"Validation result: safe={safe}, violations={len(violations)}")
+        logger.info(f"Validation result: safe={safe}, violations={len(violations)}, decision={enforcement_decision}")
         return result
 
     def _violates_constraint(self, content: str, constraint: Constraint) -> bool:
@@ -828,3 +846,28 @@ class WorldModelTools:
             "contradictions": contradictions,
             "count": len(contradictions),
         })
+
+    # ============================================================================
+    # v0.6.0 F2: Indexed Transcript Pointers
+    # ============================================================================
+
+    async def recall_transcript_range(
+        self,
+        session_id: str,
+        line_start: Optional[int] = None,
+        line_end: Optional[int] = None,
+    ) -> str:
+        """Hydrate a session transcript line range from disk."""
+        from .transcript import read_range
+        result = read_range(session_id, line_start=line_start, line_end=line_end)
+        return json.dumps(result, indent=2)
+
+    # ============================================================================
+    # v0.6.0 F4: CLAUDE.md Export
+    # ============================================================================
+
+    async def export_claude_md(self, max_constraints: int = 20) -> str:
+        """Generate a CLAUDE.md from the knowledge graph."""
+        from .claude_md_generator import generate_claude_md
+        md = await generate_claude_md(self.kg, max_constraints=max_constraints)
+        return md

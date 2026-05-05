@@ -242,6 +242,10 @@ class ValidationResult(BaseModel):
         default_factory=dict,
         description="rule_name -> total times violated since the rule was learned",
     )
+    enforcement_decision: Optional[Literal["deny", "warn", "proceed"]] = Field(
+        default=None,
+        description="v0.6.0: hard violations -> deny, soft violations -> warn, no violations -> proceed",
+    )
 
 
 class QueryFactResult(BaseModel):

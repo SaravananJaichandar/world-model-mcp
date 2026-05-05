@@ -20,11 +20,17 @@ REGISTRY_FILE = REGISTRY_DIR / "projects.json"
 
 
 class ProjectRegistry:
-    """Manages the list of world-model-mcp projects."""
+    """Manages the list of world-model-mcp projects.
+
+    Storage format (v0.6.0+):
+        {project_name: {"db_path": str, "project_id": str|None}}
+
+    Backward compat: legacy format {project_name: db_path_string} is auto-normalized.
+    """
 
     @classmethod
-    def load(cls) -> Dict[str, str]:
-        """Load registry: {project_name: db_path}."""
+    def _raw_load(cls) -> Dict[str, Any]:
+        """Load raw JSON without normalization."""
         if not REGISTRY_FILE.exists():
             return {}
         try:
@@ -33,30 +39,69 @@ class ProjectRegistry:
             return {}
 
     @classmethod
-    def register(cls, project_name: str, db_path: str) -> None:
+    def load(cls) -> Dict[str, str]:
+        """Load registry as {project_name: db_path} for backward compat."""
+        raw = cls._raw_load()
+        result: Dict[str, str] = {}
+        for name, value in raw.items():
+            if isinstance(value, str):
+                result[name] = value
+            elif isinstance(value, dict) and "db_path" in value:
+                result[name] = value["db_path"]
+        return result
+
+    @classmethod
+    def load_full(cls) -> Dict[str, Dict[str, Any]]:
+        """Load registry with all metadata (db_path, project_id)."""
+        raw = cls._raw_load()
+        result: Dict[str, Dict[str, Any]] = {}
+        for name, value in raw.items():
+            if isinstance(value, str):
+                result[name] = {"db_path": value, "project_id": None}
+            elif isinstance(value, dict):
+                result[name] = {
+                    "db_path": value.get("db_path", ""),
+                    "project_id": value.get("project_id"),
+                }
+        return result
+
+    @classmethod
+    def register(
+        cls, project_name: str, db_path: str, project_id: Optional[str] = None
+    ) -> None:
         """Add a project to the registry."""
         REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
-        registry = cls.load()
-        registry[project_name] = db_path
-        REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
-        logger.info(f"Registered project: {project_name} -> {db_path}")
+        raw = cls._raw_load()
+        raw[project_name] = {"db_path": db_path, "project_id": project_id}
+        REGISTRY_FILE.write_text(json.dumps(raw, indent=2))
+        logger.info(f"Registered project: {project_name} -> {db_path} (id={project_id})")
 
     @classmethod
     def unregister(cls, project_name: str) -> None:
         """Remove a project from the registry."""
-        registry = cls.load()
-        if project_name in registry:
-            del registry[project_name]
-            REGISTRY_FILE.write_text(json.dumps(registry, indent=2))
+        raw = cls._raw_load()
+        if project_name in raw:
+            del raw[project_name]
+            REGISTRY_FILE.write_text(json.dumps(raw, indent=2))
             logger.info(f"Unregistered project: {project_name}")
 
     @classmethod
-    def list_projects(cls) -> List[Dict[str, str]]:
-        """List all registered projects."""
-        registry = cls.load()
+    def list_projects(cls) -> List[Dict[str, Any]]:
+        """List all registered projects with full metadata."""
+        full = cls.load_full()
         return [
-            {"name": name, "db_path": path}
-            for name, path in registry.items()
+            {"name": name, "db_path": meta["db_path"], "project_id": meta.get("project_id")}
+            for name, meta in full.items()
+        ]
+
+    @classmethod
+    def find_by_project_id(cls, project_id: str) -> List[Dict[str, Any]]:
+        """Find all registered projects with a matching project_id."""
+        full = cls.load_full()
+        return [
+            {"name": name, "db_path": meta["db_path"], "project_id": meta.get("project_id")}
+            for name, meta in full.items()
+            if meta.get("project_id") == project_id
         ]
 
 

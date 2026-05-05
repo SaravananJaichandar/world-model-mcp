@@ -388,6 +388,29 @@ async def main():
                     },
                 },
             ),
+            Tool(
+                name="recall_transcript_range",
+                description="Hydrate a Claude Code session transcript by line range. Lets agents trace a fact back to the exact conversation that produced it.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "line_start": {"type": "integer"},
+                        "line_end": {"type": "integer"},
+                    },
+                    "required": ["session_id"],
+                },
+            ),
+            Tool(
+                name="export_claude_md",
+                description="Generate a CLAUDE.md document from the knowledge graph (top constraints, recent decisions, known bug regions, co-edit patterns).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "max_constraints": {"type": "integer"},
+                    },
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -545,6 +568,20 @@ async def main():
                 result = await tools.find_contradictions(
                     query=arguments.get("query"),
                     limit=arguments.get("limit", 20),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "recall_transcript_range":
+                result = await tools.recall_transcript_range(
+                    session_id=arguments["session_id"],
+                    line_start=arguments.get("line_start"),
+                    line_end=arguments.get("line_end"),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "export_claude_md":
+                result = await tools.export_claude_md(
+                    max_constraints=arguments.get("max_constraints", 20),
                 )
                 return [TextContent(type="text", text=result)]
 
