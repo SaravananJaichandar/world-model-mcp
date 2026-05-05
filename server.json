@@ -1,0 +1,46 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.SaravananJaichandar/world-model-mcp",
+  "description": "Temporal knowledge graph for codebases. Captures decision traces, links test failures to code changes, learns co-edit patterns, predicts regression risk, and enforces learned constraints at the edit boundary via a PreToolUse hook.",
+  "version": "0.6.0",
+  "repository": {
+    "url": "https://github.com/SaravananJaichandar/world-model-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "world-model-mcp",
+      "version": "0.6.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "WORLD_MODEL_DB_PATH",
+          "description": "Database location",
+          "default": "./.claude/world-model/",
+          "isRequired": false
+        },
+        {
+          "name": "ANTHROPIC_API_KEY",
+          "description": "Optional - enables LLM-powered entity extraction",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "WORLD_MODEL_EXTRACTION_MODEL",
+          "description": "Model for entity extraction",
+          "default": "claude-3-haiku-20240307",
+          "isRequired": false
+        },
+        {
+          "name": "WORLD_MODEL_REASONING_MODEL",
+          "description": "Model for complex reasoning",
+          "default": "claude-3-5-sonnet-20241022",
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}
