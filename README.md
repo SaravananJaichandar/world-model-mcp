@@ -1,9 +1,11 @@
 # World Model MCP
 
-**An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
+**The event clock for coding agents. An MCP server that builds a temporal knowledge graph for your codebase -- captures decision traces from Claude Code sessions, links them to test outcomes, learns trajectories, and enforces constraints at the edit boundary.**
 
 > **Status: Alpha (v0.6.0)** -- The event clock for coding agents. 22 MCP tools, 186 tests, PreToolUse enforcement, decision traces, prediction layer. Contributions welcome.
 
+[![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
+[![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
