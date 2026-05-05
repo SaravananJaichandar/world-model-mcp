@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "world-model-mcp",
   "display_name": "World Model",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "The event clock for coding agents. Captures decision traces from Claude Code sessions, links them to test outcomes, learns trajectories, and enforces constraints at the edit boundary.",
   "long_description": "world-model-mcp builds a temporal knowledge graph for your codebase: entities (functions, classes, APIs), facts with valid_at/invalid_at timestamps, learned constraints from corrections, and decision traces. It includes regression prediction, what-if simulation, fact contradiction detection, memory health reports, and a PreToolUse hook that denies edits matching hard constraints learned from prior corrections.",
   "author": {
