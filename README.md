@@ -2,7 +2,7 @@
 
 **An experimental MCP server that builds a "world model" for your codebase -- a temporal knowledge graph that learns from Claude Code sessions to reduce hallucinations, repeated mistakes, and regressions.**
 
-> **Status: Alpha (v0.6.0)** -- Knowledge graph auto-populates from existing code on setup. 8 MCP tools, 40 tests. Contributions welcome.
+> **Status: Alpha (v0.6.0)** -- The event clock for coding agents. 22 MCP tools, 186 tests, PreToolUse enforcement, decision traces, prediction layer. Contributions welcome.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
@@ -129,7 +129,7 @@ if (user && user.email) { ... }
                          v
 ┌──────────────────────────────────────────────────────────┐
 │ MCP Server (Python)                                      │
-│ - 20 MCP tools for querying/recording/predicting          │
+│ - 22 MCP tools for querying/recording/predicting          │
 │ - LLM-powered entity extraction (Claude Haiku)           │
 │ - External linter integration (ESLint, Pylint, Ruff)     │
 └──────────────────────────────────────────────────────────┘
@@ -269,7 +269,7 @@ pytest
 pytest --cov=world_model_server --cov-report=html
 ```
 
-151 tests covering knowledge graph CRUD, FTS5 search, constraint management, bug tracking, auto-seeding, PR review ingestion, decision traces, outcome linkage, trajectory learning, prediction layer, memory health, and contradiction detection. See [tests/](./tests/) for details.
+186 tests covering knowledge graph CRUD, FTS5 search, constraint management, bug tracking, auto-seeding, PR review ingestion, decision traces, outcome linkage, trajectory learning, prediction layer, memory health, contradiction detection, transcript pointers, project identity, and PreToolUse enforcement. See [tests/](./tests/) for details.
 
 ---
 
@@ -347,7 +347,7 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ## Roadmap
 
-### v0.2.x (Current)
+### v0.2.x
 - [x] Auto-seeding: knowledge graph populates from existing codebase on setup
 - [x] PR Review Intelligence: ingest GitHub review comments as constraints
 - [x] Relationship tracking: import and dependency graph between entities
@@ -355,13 +355,13 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [x] CLI query command for knowledge graph lookups
 - [x] 40 tests, 8 MCP tools
 
-### v0.3.0 (Next)
-- [ ] Module-level matching: query by module name finds the file and its contents
-- [ ] Incremental re-seeding: only re-process files changed since last seed
-- [ ] Fuzzy entity matching: approximate name search for typos and abbreviations
-- [ ] Query caching: in-memory cache with TTL for repeated lookups
-- [ ] Java support: complete multi-language coverage
-- [ ] MCP server pipeline validation on real projects
+### v0.3.0
+- [x] Module-level matching: query by module name finds the file and its contents
+- [x] Incremental re-seeding: only re-process files changed since last seed
+- [x] Fuzzy entity matching: approximate name search for typos and abbreviations
+- [x] Query caching: in-memory cache with TTL for repeated lookups
+- [x] Java support: complete multi-language coverage
+- [x] MCP server pipeline validation on real projects
 
 ### v0.4.0
 - [x] Outcome linkage: test failures linked to code changes with facts
