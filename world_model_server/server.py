@@ -411,6 +411,61 @@ async def main():
                     },
                 },
             ),
+            Tool(
+                name="get_injection_context",
+                description="Return a compact constraint+fact bundle for PostCompact / UserPromptSubmit hooks to re-inject after context loss.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "event_type": {"type": "string", "enum": ["PostCompact", "UserPromptSubmit", "SessionStart"]},
+                        "project_hint": {"type": "string"},
+                        "max_constraints": {"type": "integer"},
+                        "max_facts": {"type": "integer"},
+                    },
+                    "required": ["event_type"],
+                },
+            ),
+            Tool(
+                name="record_compaction_audit",
+                description="Record a context-compaction event with token counts and what was re-injected. Lets developers audit what was remembered across compaction boundaries.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "pre_compact_tokens": {"type": "integer"},
+                        "post_compact_tokens": {"type": "integer"},
+                        "facts_injected": {"type": "integer"},
+                        "constraints_injected": {"type": "integer"},
+                        "injection_event": {"type": "string"},
+                        "raw_summary": {"type": "string"},
+                    },
+                },
+            ),
+            Tool(
+                name="get_compaction_audit",
+                description="List recent compaction audit entries, most-recent first. Filter by session_id or limit count.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            ),
+            Tool(
+                name="resolve_contradiction",
+                description="Pick a winner between two contradicting facts using a confidence-weighted strategy (auto, keep_higher_confidence, keep_most_recent, keep_most_sources, supersede_a, supersede_b, manual).",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "fact_a_id": {"type": "string"},
+                        "fact_b_id": {"type": "string"},
+                        "strategy": {"type": "string"},
+                        "notes": {"type": "string"},
+                    },
+                    "required": ["fact_a_id", "fact_b_id"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -582,6 +637,43 @@ async def main():
             elif name == "export_claude_md":
                 result = await tools.export_claude_md(
                     max_constraints=arguments.get("max_constraints", 20),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_injection_context":
+                result = await tools.get_injection_context(
+                    event_type=arguments["event_type"],
+                    project_hint=arguments.get("project_hint"),
+                    max_constraints=arguments.get("max_constraints", 10),
+                    max_facts=arguments.get("max_facts", 10),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "record_compaction_audit":
+                result = await tools.record_compaction_audit(
+                    session_id=arguments.get("session_id"),
+                    pre_compact_tokens=arguments.get("pre_compact_tokens"),
+                    post_compact_tokens=arguments.get("post_compact_tokens"),
+                    facts_injected=arguments.get("facts_injected", 0),
+                    constraints_injected=arguments.get("constraints_injected", 0),
+                    injection_event=arguments.get("injection_event"),
+                    raw_summary=arguments.get("raw_summary"),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_compaction_audit":
+                result = await tools.get_compaction_audit(
+                    session_id=arguments.get("session_id"),
+                    limit=arguments.get("limit", 50),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "resolve_contradiction":
+                result = await tools.resolve_contradiction(
+                    fact_a_id=arguments["fact_a_id"],
+                    fact_b_id=arguments["fact_b_id"],
+                    strategy=arguments.get("strategy", "auto"),
+                    notes=arguments.get("notes"),
                 )
                 return [TextContent(type="text", text=result)]
 

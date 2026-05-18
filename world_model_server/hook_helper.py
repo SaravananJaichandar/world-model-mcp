@@ -12,18 +12,23 @@ Input shape (stdin):
     "tool_input": {"file_path": str, "new_string"|"content": str, ...},
     "project_dir": str,
     "session_id": str (optional),
-    "hard_threshold": int (optional, default 3)
+    "hard_threshold": int (optional, default 3),
+    "defer_threshold": int (optional, default 5),
+    "supports_defer": bool (optional, default false)
 }
 
 Output shape (stdout):
 {
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
-        "permissionDecision": "deny" | "ask" | "allow",
+        "permissionDecision": "deny" | "defer" | "ask" | "allow",
         "permissionDecisionReason": str
     },
     "violations": [...]
 }
+
+When the client does not advertise `supports_defer`, defer-tier violations
+downgrade to `ask` for backward compatibility.
 """
 
 import json
@@ -97,6 +102,8 @@ def classify(payload: dict) -> dict:
     tool_input = payload.get("tool_input", {})
     project_dir = payload.get("project_dir", ".")
     hard_threshold = payload.get("hard_threshold", 3)
+    defer_threshold = payload.get("defer_threshold", 5)
+    supports_defer = bool(payload.get("supports_defer", False))
 
     file_path = tool_input.get("file_path", "")
     content = (
@@ -117,6 +124,7 @@ def classify(payload: dict) -> dict:
 
     violations = []
     hard_count = 0
+    defer_count = 0
 
     for c in all_constraints:
         # Filter by file pattern
@@ -128,6 +136,11 @@ def classify(payload: dict) -> dict:
             severity = c.get("severity", "warning")
             violation_count = c.get("violation_count", 0)
             is_hard = severity == "error" and violation_count >= hard_threshold
+            is_defer = (
+                not is_hard
+                and severity == "warning"
+                and violation_count >= defer_threshold
+            )
 
             violations.append({
                 "rule": c.get("rule_name"),
@@ -135,9 +148,12 @@ def classify(payload: dict) -> dict:
                 "description": c.get("description"),
                 "violation_count": violation_count,
                 "is_hard": is_hard,
+                "is_defer": is_defer,
             })
             if is_hard:
                 hard_count += 1
+            elif is_defer:
+                defer_count += 1
 
     if not violations:
         return {}
@@ -145,6 +161,13 @@ def classify(payload: dict) -> dict:
     if hard_count > 0:
         decision = "deny"
         reason = f"Hard constraint violation: {violations[0]['rule']} ({violations[0]['description']}). Violated {violations[0]['violation_count']} times previously."
+    elif defer_count > 0:
+        # defer tier: prefer 'defer' if the client supports it, else fall back to 'ask'
+        decision = "defer" if supports_defer else "ask"
+        defer_rules = ", ".join(
+            v["rule"] for v in violations if v.get("is_defer")
+        )[:200]
+        reason = f"Recurring warning-level violations ({defer_rules}). Headless agents should pause for confirmation."
     else:
         decision = "ask"
         rules = ", ".join(v["rule"] for v in violations[:3])

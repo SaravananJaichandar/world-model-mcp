@@ -1,8 +1,8 @@
 # World Model MCP
 
-**The event clock for coding agents. An MCP server that builds a temporal knowledge graph for your codebase -- captures decision traces from Claude Code sessions, links them to test outcomes, learns trajectories, and enforces constraints at the edit boundary.**
+**Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code and Cursor.
 
-> **Status: Alpha (v0.6.0)** -- The event clock for coding agents. 22 MCP tools, 186 tests, PreToolUse enforcement, decision traces, prediction layer. Contributions welcome.
+> **Status: v0.7.0** -- 25 MCP tools, 14 CLI subcommands, 220 tests. Adds PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, a compaction audit log, and a Cursor adapter. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -15,13 +15,25 @@ mcp-name: io.github.SaravananJaichandar/world-model-mcp
 
 ## What It Does
 
-World Model MCP creates a **temporal knowledge graph** of your codebase that learns from every Claude Code session to:
+World Model MCP creates a **temporal knowledge graph** of your codebase that learns from every coding session to:
 
-- **Prevent Hallucinations** - Validates API/function references against known entities before use
-- **Stop Repeated Mistakes** - Learns constraints from corrections, applies them in future sessions
-- **Reduce Regressions** - Tracks bug fixes and warns when changes touch critical regions
+- **Prevent Hallucinations** -- Validates API/function references against known entities before use
+- **Stop Repeated Mistakes** -- Learns constraints from corrections, applies them in future sessions
+- **Reduce Regressions** -- Tracks bug fixes and warns when changes touch critical regions
+- **Survive Compaction** -- Re-injects top constraints and recent facts after the agent's context window resets
+- **Resolve Contradictions** -- Picks a winner between conflicting facts using confidence, recency, or source count
 
-Think of it as giving Claude a **long-term memory** of your project.
+Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
+
+---
+
+## What's new in v0.7.0
+
+- **PostCompact / UserPromptSubmit auto-injection** -- when the agent's context is compacted, the hook automatically splices the top constraints and recent canonical facts back into the next turn. Configurable, fails open.
+- **`defer` enforcement tier** -- PreToolUse now classifies recurring warning-level violations as `defer`, which pauses headless agents (with graceful fallback to `ask` on older clients) instead of either hard-denying or silently passing through.
+- **Confidence-weighted contradiction resolution** -- the new `resolve_contradiction` tool picks a winner using `keep_higher_confidence`, `keep_most_recent`, `keep_most_sources`, or `auto`. The loser is marked superseded.
+- **Compaction audit log** -- every PostCompact event writes a row with pre/post token counts and what was re-injected. Query with the `audit-compactions` CLI or export to JSONL.
+- **Cursor adapter** -- harness-neutral hooks under `adapters/cursor/`. Same Python helpers, different manifest format.
 
 ---
 
@@ -384,7 +396,7 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [x] get_context_for_action pre-edit bundle, constraint violation tracking, find_contradictions
 - [x] 20 MCP tools, 151 tests
 
-### v0.6.0 (Current) — Enforcement, Provenance, Identity
+### v0.6.0 — Enforcement, Provenance, Identity
 - [x] PreToolUse constraint enforcement hook: deny hard violations at the edit boundary
 - [x] Indexed transcript pointers: hydrate any fact back to source conversation
 - [x] Project identity decoupling: stable UUID across directory renames
@@ -394,10 +406,19 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [x] Desktop Extension (.mcpb) packaging for Claude Desktop
 - [x] 22 MCP tools, 13 CLI subcommands, 186 tests
 
-### v0.7.0 (Next)
-- [ ] AST-based extraction via tree-sitter
-- [ ] Background fact decay scheduler (opt-in)
-- [ ] Confidence-weighted contradictions with auto-resolution
+### v0.7.0 (Current) — Auto-injection, defer tier, contradiction resolution, harness adapters
+- [x] PostCompact and UserPromptSubmit auto-injection: re-emit top constraints and recent facts after context loss
+- [x] `defer` enforcement tier in PreToolUse: pause headless agents on recurring warning-level violations, with graceful fallback to `ask`
+- [x] Confidence-weighted contradiction resolution: pick a winner using confidence, recency, or source count, with an `auto` strategy
+- [x] Compaction audit log: query and export what was remembered across each compaction boundary
+- [x] Cursor adapter package: harness-neutral hooks (`beforeSubmitPrompt`, `beforeEdit`, `afterCompact`)
+- [x] 25 MCP tools, 14 CLI subcommands, 220 tests
+
+### v0.8.0 (Next)
+- [ ] Cline and Codex adapters
+- [ ] Local web dashboard for the knowledge graph
+- [ ] Evidence-weighted decay: constraints persist, low-evidence assertions expire
+- [ ] AST-based extraction as substrate for the temporal layer
 - [ ] Org-wide constraint federation
 
 ---

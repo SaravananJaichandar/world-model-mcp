@@ -255,19 +255,30 @@ class WorldModelTools:
         safe = len(violations) == 0
         confidence = 1.0 if safe else 0.95 if any(v.get("source") == "linter" for v in violations) else 0.9
 
-        # v0.6.0: classify hard vs soft violations for enforcement_decision
-        hard_threshold = 3  # configurable via env var if needed later
+        # Classify enforcement_decision into deny / defer / warn / proceed.
+        # deny: error-level violation seen >= hard_threshold times
+        # defer: warning-level violation seen >= defer_threshold times (pauses headless agents)
+        # warn:  any other violation
+        # proceed: clean
+        hard_threshold = 3
+        defer_threshold = 5
         wm_violations = [v for v in violations if v.get("source") == "world_model"]
         hard_violations = [
             v for v in wm_violations
             if v.get("severity") == "error" and v.get("violation_count", 0) >= hard_threshold
         ]
+        defer_violations = [
+            v for v in wm_violations
+            if v.get("severity") == "warning" and v.get("violation_count", 0) >= defer_threshold
+            and v not in hard_violations
+        ]
         if hard_violations:
             enforcement_decision = "deny"
+        elif defer_violations:
+            enforcement_decision = "defer"
         elif wm_violations:
             enforcement_decision = "warn"
         elif violations:
-            # Linter-only violations are soft warnings
             enforcement_decision = "warn"
         else:
             enforcement_decision = "proceed"
@@ -871,3 +882,148 @@ class WorldModelTools:
         from .claude_md_generator import generate_claude_md
         md = await generate_claude_md(self.kg, max_constraints=max_constraints)
         return md
+
+    # ============================================================================
+    # v0.7.0 F3: Confidence-weighted contradiction resolution
+    # ============================================================================
+
+    async def resolve_contradiction(
+        self,
+        fact_a_id: str,
+        fact_b_id: str,
+        strategy: str = "auto",
+        notes: Optional[str] = None,
+    ) -> str:
+        """Pick a winner between two contradicting facts and mark the loser superseded."""
+        from .contradictions import resolve
+        result = await resolve(
+            self.kg, fact_a_id, fact_b_id, strategy=strategy, notes=notes
+        )
+        return result.model_dump_json()
+
+    async def _recent_canonical_facts(
+        self,
+        limit: int = 10,
+        search: Optional[str] = None,
+    ) -> list:
+        """Return recent canonical facts as dicts. Private helper for injection."""
+        import aiosqlite
+        async with aiosqlite.connect(self.kg.facts_db) as db:
+            db.row_factory = aiosqlite.Row
+            if search:
+                cursor = await db.execute(
+                    """
+                    SELECT id, fact_text, valid_at FROM facts
+                    WHERE status = 'canonical' AND fact_text LIKE ?
+                    ORDER BY valid_at DESC LIMIT ?
+                    """,
+                    (f"%{search}%", limit),
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    SELECT id, fact_text, valid_at FROM facts
+                    WHERE status = 'canonical'
+                    ORDER BY valid_at DESC LIMIT ?
+                    """,
+                    (limit,),
+                )
+            rows = await cursor.fetchall()
+            return [
+                {"id": r["id"], "fact_text": r["fact_text"], "valid_at": r["valid_at"]}
+                for r in rows
+            ]
+
+    # ============================================================================
+    # v0.7.0 F5: Compaction audit log
+    # ============================================================================
+
+    async def record_compaction_audit(
+        self,
+        session_id: Optional[str] = None,
+        pre_compact_tokens: Optional[int] = None,
+        post_compact_tokens: Optional[int] = None,
+        facts_injected: int = 0,
+        constraints_injected: int = 0,
+        injection_event: Optional[str] = None,
+        raw_summary: Optional[str] = None,
+    ) -> str:
+        """Record one compaction event in the audit log."""
+        from .audit import record_compaction
+        entry = await record_compaction(
+            self.kg,
+            session_id=session_id,
+            pre_compact_tokens=pre_compact_tokens,
+            post_compact_tokens=post_compact_tokens,
+            facts_injected=facts_injected,
+            constraints_injected=constraints_injected,
+            injection_event=injection_event,
+            raw_summary=raw_summary,
+        )
+        return entry.model_dump_json()
+
+    async def get_compaction_audit(
+        self,
+        session_id: Optional[str] = None,
+        limit: int = 50,
+    ) -> str:
+        """List recent compaction audit entries, most-recent first."""
+        from .audit import list_compactions
+        entries = await list_compactions(self.kg, session_id=session_id, limit=limit)
+        return json.dumps(
+            {
+                "count": len(entries),
+                "entries": [json.loads(e.model_dump_json()) for e in entries],
+            },
+            indent=2,
+        )
+
+    # ============================================================================
+    # v0.7.0 F1: PostCompact / UserPromptSubmit auto-injection context
+    # ============================================================================
+
+    async def get_injection_context(
+        self,
+        event_type: str,
+        project_hint: Optional[str] = None,
+        max_constraints: int = 10,
+        max_facts: int = 10,
+    ) -> str:
+        """Return a compact context bundle to inject after compaction or on user prompt.
+
+        event_type: one of "PostCompact", "UserPromptSubmit", "SessionStart"
+        project_hint: optional substring to bias fact selection toward (e.g. file path or topic)
+        """
+        # Top constraints by violation_count (existing get_constraints orders by it desc)
+        all_constraints = await self.kg.get_constraints()
+        constraints = all_constraints[:max_constraints]
+
+        # Recent canonical facts: pull from facts table directly
+        facts = await self._recent_canonical_facts(
+            limit=max_facts, search=project_hint
+        )
+
+        lines: list = []
+        if constraints:
+            lines.append("## Active constraints (top by violation count)")
+            for c in constraints:
+                lines.append(
+                    f"- {c.rule_name}: {c.description} (violated {c.violation_count}x)"
+                )
+
+        if facts:
+            lines.append("")
+            lines.append("## Recent canonical facts")
+            for f in facts:
+                lines.append(f"- {f['fact_text']}")
+
+        injection = "\n".join(lines).strip()
+        return json.dumps(
+            {
+                "event_type": event_type,
+                "injection": injection,
+                "facts_count": len(facts),
+                "constraints_count": len(constraints),
+            },
+            indent=2,
+        )

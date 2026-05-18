@@ -50,6 +50,7 @@ class KnowledgeGraph:
         self.decisions_db = self.db_path / "decisions.db"
         self.outcomes_db = self.db_path / "outcomes.db"
         self.trajectories_db = self.db_path / "trajectories.db"
+        self.audit_db = self.db_path / "audit.db"
 
         # Query cache with TTL (seconds)
         self._cache: Dict[str, Tuple[float, Any]] = {}
@@ -90,6 +91,7 @@ class KnowledgeGraph:
         await self._create_decisions_schema()
         await self._create_outcomes_schema()
         await self._create_trajectories_schema()
+        await self._create_audit_schema()
         await self._run_migrations()
 
     async def _existing_columns(self, db, table: str) -> set:
@@ -99,14 +101,16 @@ class KnowledgeGraph:
         return {row[1] for row in rows}
 
     async def _run_migrations(self) -> None:
-        """v0.6.0: Apply backward-compatible schema migrations.
+        """Apply backward-compatible schema migrations.
 
-        Adds columns for transcript pointers (F2) and content_hash dedup (F3).
+        v0.6.0 added transcript pointers (F2) and content_hash dedup (F3).
+        v0.7.0 adds source_count and last_confirmed_at for confidence-weighted
+        contradiction resolution.
         All ALTERs are idempotent via column existence checks.
         """
         import hashlib as _hashlib
 
-        # facts: add transcript pointers + content_hash
+        # facts: add transcript pointers + content_hash + v0.7 confidence weighting
         async with aiosqlite.connect(self.facts_db) as db:
             cols = await self._existing_columns(db, "facts")
             if "transcript_session_id" not in cols:
@@ -119,6 +123,15 @@ class KnowledgeGraph:
                 await db.execute("ALTER TABLE facts ADD COLUMN content_hash TEXT")
                 await db.execute(
                     "CREATE INDEX IF NOT EXISTS idx_facts_hash ON facts(content_hash)"
+                )
+            # v0.7.0: confidence weighting fields
+            if "source_count" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN source_count INTEGER DEFAULT 1"
+                )
+            if "last_confirmed_at" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN last_confirmed_at TIMESTAMP"
                 )
             # Always backfill any NULL content_hash rows (covers post-migration inserts too)
             cursor = await db.execute(
@@ -557,8 +570,9 @@ class KnowledgeGraph:
                 """
                 INSERT INTO facts
                 (id, fact_text, valid_at, invalid_at, status, entity_ids, evidence_type,
-                 evidence_path, derived_from, confidence, session_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 evidence_path, derived_from, confidence, session_id, created_at,
+                 source_count, last_confirmed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     fact.id,
@@ -573,6 +587,8 @@ class KnowledgeGraph:
                     fact.confidence,
                     fact.session_id,
                     fact.created_at.isoformat(),
+                    fact.source_count,
+                    fact.last_confirmed_at.isoformat() if fact.last_confirmed_at else None,
                 ),
             )
             await db.commit()
@@ -1164,6 +1180,33 @@ class KnowledgeGraph:
     # Trajectory / Co-edit Operations (v0.4.0)
     # ============================================================================
 
+    async def _create_audit_schema(self) -> None:
+        """Create compaction audit log table (v0.7.0 F5)."""
+        async with aiosqlite.connect(self.audit_db) as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS compaction_audit (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    compacted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    pre_compact_tokens INTEGER,
+                    post_compact_tokens INTEGER,
+                    facts_injected INTEGER DEFAULT 0,
+                    constraints_injected INTEGER DEFAULT 0,
+                    injection_event TEXT,
+                    raw_summary TEXT,
+                    metadata JSON
+                )
+            """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_session ON compaction_audit(session_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_when ON compaction_audit(compacted_at)"
+            )
+            await db.commit()
+
     async def _create_trajectories_schema(self) -> None:
         """Create co-edit tracking table."""
         async with aiosqlite.connect(self.trajectories_db) as db:
@@ -1406,6 +1449,13 @@ class KnowledgeGraph:
                         reasons.append("one invalidated, other still valid")
                     if entity_overlap and ratio >= 0.85:
                         reasons.append("same entity, similar text")
+
+                    # v0.7.0: surface confidence + source counts for weighting
+                    conf_a = float(a["confidence"]) if a["confidence"] is not None else 1.0
+                    conf_b = float(b["confidence"]) if b["confidence"] is not None else 1.0
+                    src_a = int(a["source_count"]) if "source_count" in a.keys() and a["source_count"] is not None else 1
+                    src_b = int(b["source_count"]) if "source_count" in b.keys() and b["source_count"] is not None else 1
+
                     contradictions.append({
                         "fact_a_id": a["id"],
                         "fact_b_id": b["id"],
@@ -1414,10 +1464,36 @@ class KnowledgeGraph:
                         "similarity_score": round(ratio, 3),
                         "both_valid": a["invalid_at"] is None and b["invalid_at"] is None,
                         "reason": "; ".join(reasons) or "high similarity",
+                        "confidence_a": conf_a,
+                        "confidence_b": conf_b,
+                        "source_count_a": src_a,
+                        "source_count_b": src_b,
                     })
                     if len(contradictions) >= limit:
                         return contradictions
         return contradictions
+
+    async def supersede_fact(self, fact_id: str, reason: Optional[str] = None) -> bool:
+        """Mark a fact as superseded (v0.7.0 F3 resolution path).
+
+        Sets status='superseded' and invalid_at=now. Returns True if any row was updated.
+        """
+        now = datetime.now().isoformat()
+        async with aiosqlite.connect(self.facts_db) as db:
+            cursor = await db.execute(
+                "UPDATE facts SET status = 'superseded', invalid_at = ? WHERE id = ?",
+                (now, fact_id),
+            )
+            await db.commit()
+            return cursor.rowcount > 0
+
+    async def get_fact_by_id(self, fact_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch a single fact row by id, returns None if missing."""
+        async with aiosqlite.connect(self.facts_db) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute("SELECT * FROM facts WHERE id = ?", (fact_id,))
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
     async def apply_fact_decay(self, days: int = 90) -> int:
         """Mark facts with no re-observation in N days as invalid."""

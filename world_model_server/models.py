@@ -72,6 +72,10 @@ class Fact(BaseModel):
     confidence: float = Field(1.0, ge=0.0, le=1.0, description="Confidence score")
     session_id: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
+    source_count: int = Field(1, ge=1, description="Number of independent sources supporting this fact")
+    last_confirmed_at: Optional[datetime] = Field(
+        None, description="When this fact was most recently re-observed"
+    )
 
     class Config:
         json_schema_extra = {
@@ -242,9 +246,9 @@ class ValidationResult(BaseModel):
         default_factory=dict,
         description="rule_name -> total times violated since the rule was learned",
     )
-    enforcement_decision: Optional[Literal["deny", "warn", "proceed"]] = Field(
+    enforcement_decision: Optional[Literal["deny", "warn", "proceed", "defer"]] = Field(
         default=None,
-        description="v0.6.0: hard violations -> deny, soft violations -> warn, no violations -> proceed",
+        description="hard violations -> deny, soft violations -> warn, no violations -> proceed, headless ambiguous -> defer",
     )
 
 
@@ -339,6 +343,39 @@ class ContradictionPair(BaseModel):
     similarity_score: float = Field(0.0, ge=0.0, le=1.0)
     both_valid: bool
     reason: str
+    confidence_a: float = Field(1.0, ge=0.0, le=1.0)
+    confidence_b: float = Field(1.0, ge=0.0, le=1.0)
+    source_count_a: int = Field(1, ge=1)
+    source_count_b: int = Field(1, ge=1)
+    suggested_winner: Optional[Literal["a", "b", "neither"]] = None
+    suggested_strategy: Optional[str] = None
+
+
+class ContradictionResolution(BaseModel):
+    """Result of resolving a contradiction pair."""
+
+    fact_a_id: str
+    fact_b_id: str
+    strategy: Literal["keep_higher_confidence", "keep_most_recent", "keep_most_sources", "supersede_a", "supersede_b", "manual"]
+    winner_id: Optional[str] = None
+    loser_id: Optional[str] = None
+    resolved_at: datetime = Field(default_factory=datetime.now)
+    notes: Optional[str] = None
+
+
+class CompactionAuditEntry(BaseModel):
+    """A single compaction audit log entry."""
+
+    id: str = Field(default_factory=generate_id)
+    session_id: Optional[str] = None
+    compacted_at: datetime = Field(default_factory=datetime.now)
+    pre_compact_tokens: Optional[int] = None
+    post_compact_tokens: Optional[int] = None
+    facts_injected: int = 0
+    constraints_injected: int = 0
+    injection_event: Optional[Literal["PostCompact", "UserPromptSubmit", "SessionStart"]] = None
+    raw_summary: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
 
 
 class HealthReport(BaseModel):

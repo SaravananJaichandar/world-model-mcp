@@ -1,5 +1,76 @@
 # World Model MCP - Release Notes
 
+## v0.7.0 (May 2026)
+
+### Headline
+
+Enforcement, provenance, and harness-neutral memory. v0.7.0 extends the
+v0.6 enforcement boundary with a new `defer` tier for headless agents,
+re-injects context after compaction, resolves contradictions with
+confidence weighting, audits every compaction event, and ships a
+Cursor adapter so the same primitives run outside Claude Code.
+
+### New features
+
+- **PostCompact + UserPromptSubmit auto-injection (F1)** -- the new
+  `world-model-inject` hook calls a Python helper that returns a compact
+  bundle of top constraints and recent canonical facts to splice into
+  the agent's working context after compaction or on user prompt. The
+  helper reads constraints and facts read-only and fails open on any
+  error. New MCP tool: `get_injection_context`.
+- **`defer` enforcement tier in PreToolUse (F2)** -- warning-severity
+  violations seen 5+ times now return `permissionDecision: "defer"`
+  (configurable threshold) when the client supports it, falling back
+  to `ask` otherwise. The `ValidationResult.enforcement_decision`
+  enum now includes `defer`.
+- **Confidence-weighted contradiction resolution (F3)** -- new
+  `resolve_contradiction` MCP tool picks a winner with strategies
+  `keep_higher_confidence`, `keep_most_recent`, `keep_most_sources`,
+  `supersede_a`, `supersede_b`, `manual`, or `auto` (chooses based on
+  the largest signal gap). The loser is marked `status='superseded'`
+  with `invalid_at=now`. `find_contradictions` now returns
+  `confidence_a`, `confidence_b`, `source_count_a`, `source_count_b`
+  on every pair.
+- **Compaction audit log (F5)** -- new `audit.db` and
+  `compaction_audit` table. Each PostCompact write records pre/post
+  token counts and what was re-injected. New MCP tools:
+  `record_compaction_audit`, `get_compaction_audit`. New CLI:
+  `world-model audit-compactions [--export <path>]`.
+- **Cursor adapter (F4)** -- `adapters/cursor/` ships `hooks.json` and
+  `mcp.json` templates that wire the same `inject_helper` and
+  `hook_helper` into Cursor's `beforeSubmitPrompt`, `beforeEdit`, and
+  `afterCompact` events. Experimental.
+
+### Schema changes (backward-compatible)
+
+- `facts.source_count INTEGER DEFAULT 1` -- number of independent
+  sources supporting a fact
+- `facts.last_confirmed_at TIMESTAMP` -- most recent re-observation
+- New `audit.db` with `compaction_audit` table
+
+All migrations run idempotently via `_existing_columns()`.
+
+### Tool and CLI surface
+
+- 25 MCP tools (was 22): added `get_injection_context`,
+  `record_compaction_audit`, `get_compaction_audit`,
+  `resolve_contradiction`
+- 14 CLI subcommands (was 13): added `audit-compactions`
+
+### Tests
+
+220 passing (was 186): added 34 v0.7.0 tests in `tests/test_v070_features.py`
+covering each feature plus backward-compat regression checks.
+
+### Compatibility
+
+- All 22 v0.6 MCP tools continue to work unchanged
+- All 13 v0.6 CLI subcommands continue to work unchanged
+- v0.6 databases auto-migrate on first `initialize()` call
+- Older MCP clients that do not understand `defer` see `ask` instead
+
+---
+
 ## v0.1.1 (March 2026)
 
 ### Bug Fixes

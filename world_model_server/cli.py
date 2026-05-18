@@ -473,6 +473,41 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def audit_compactions_command(args):
+    """List or export compaction audit entries."""
+    import asyncio
+    from .audit import export_jsonl, list_compactions
+    from .knowledge_graph import KnowledgeGraph
+
+    project_dir = Path(args.project_dir).resolve()
+    db_path = str(project_dir / ".claude" / "world-model")
+
+    async def run():
+        kg = KnowledgeGraph(db_path)
+        await kg.initialize()
+        if args.export:
+            out = Path(args.export).resolve()
+            count = await export_jsonl(
+                kg, out, session_id=args.session, limit=args.limit
+            )
+            console.print(f"Wrote {count} audit rows to {out}")
+            return
+        entries = await list_compactions(kg, session_id=args.session, limit=args.limit)
+        if not entries:
+            console.print("[yellow]No compaction audit rows found[/yellow]")
+            return
+        console.print(f"[bold]{len(entries)} compaction audit rows[/bold]")
+        for e in entries:
+            console.print(
+                f"  {e.compacted_at.isoformat()}  session={e.session_id or '-'}  "
+                f"pre={e.pre_compact_tokens}  post={e.post_compact_tokens}  "
+                f"facts_injected={e.facts_injected}  constraints_injected={e.constraints_injected}  "
+                f"event={e.injection_event or '-'}"
+            )
+
+    asyncio.run(run())
+
+
 def status_command(args):
     """Show world model status for a project."""
     project_dir = Path(args.project_dir).resolve()
@@ -606,6 +641,15 @@ def main():
         "--project-dir", type=str, default=".", help="Project directory"
     )
     status_parser.set_defaults(func=status_command)
+
+    audit_parser = subparsers.add_parser(
+        "audit-compactions", help="List or export compaction audit entries"
+    )
+    audit_parser.add_argument("--project-dir", type=str, default=".")
+    audit_parser.add_argument("--session", type=str, default=None, help="Filter by session_id")
+    audit_parser.add_argument("--limit", type=int, default=50)
+    audit_parser.add_argument("--export", type=str, default=None, help="Path to write JSONL")
+    audit_parser.set_defaults(func=audit_compactions_command)
 
     args = parser.parse_args()
 
