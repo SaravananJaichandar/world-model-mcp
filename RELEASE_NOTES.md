@@ -1,5 +1,48 @@
 # World Model MCP - Release Notes
 
+## v0.7.1 (May 2026)
+
+Patch release fixing the Cursor adapter shipped in v0.7.0.
+
+### Cursor adapter rewrite
+
+The v0.7.0 adapter declared hook events (`beforeEdit`, `afterCompact`) and
+used a config shape that did not match Cursor's actual hooks API. v0.7.1
+rewrites the adapter against Cursor's real schema:
+
+- `hooks.json` now uses the object-keyed `{ "version": 1, "hooks": { eventName: [...] } }` shape
+- Event names corrected to `beforeSubmitPrompt`, `preToolUse` (with `matcher`), and `preCompact`
+- `timeout` is in seconds (was `timeout_ms`)
+- `failClosed: false` replaces the old `fail_open: true` (inverted semantics)
+- Node wrappers now live in `.cursor/hooks/` (was `.claude/hooks/`, which did not exist after the adapter install)
+- `mcp.json` uses a relative `WORLD_MODEL_DB_PATH` instead of the un-documented `${workspaceFolder}` variable
+
+### New CLI: `install-cursor`
+
+Replaces the brittle copy-paste install step with `python -m world_model_server.cli install-cursor`. The command copies `mcp.json`, `hooks.json`, and the compiled Node hook wrappers into `.cursor/` from the installed package. Supports `--force` to overwrite existing files.
+
+Adapter resources are now bundled inside the wheel at `world_model_server/adapters/cursor/`, so installs from PyPI ship the adapter files correctly.
+
+### Adapter README updates
+
+- Real install steps using the new CLI
+- Note about Cursor's one-click MCP approval prompt on first run
+- Section explaining the overlap with Cursor Memories and Cursor Rules
+- Note that `defer` maps to `ask` in Cursor (no separate headless decision)
+- Note that `preCompact` runs before summarization (no `postCompact` in Cursor yet)
+
+### Tests
+
+- Updated `test_f4_cursor_adapter_hooks_json_is_valid` to assert the new object-keyed schema
+- 220 tests still passing
+
+### Backward compatibility
+
+- v0.7.0 PyPI / MCP registry / .mcpb release is unchanged; the broken Cursor adapter in that release will simply fail to load when Cursor parses it -- it does not break Claude Code
+- Users on v0.7.0 should upgrade with `pip install -U world-model-mcp` then rerun `python -m world_model_server.cli install-cursor --force` to refresh the adapter files
+
+---
+
 ## v0.7.0 (May 2026)
 
 ### Headline

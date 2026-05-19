@@ -371,12 +371,75 @@ def test_f4_cursor_adapter_package_exists():
     assert hooks_template.exists()
 
 
-def test_f4_cursor_adapter_hooks_json_is_valid():
+def test_f4_cursor_adapter_hooks_json_matches_cursor_schema():
+    """v0.7.1: hooks.json must be object-keyed with Cursor's real event names."""
     repo_root = Path(__file__).parent.parent
     hooks_template = repo_root / "adapters" / "cursor" / "hooks.json"
     data = json.loads(hooks_template.read_text())
-    # Should at least declare the inject hook entries
-    assert "hooks" in data or "events" in data
+
+    # version must be a number, not a string
+    assert data.get("version") == 1, "hooks.json version must be integer 1"
+
+    # hooks must be an object keyed by event name (not an array)
+    hooks = data.get("hooks")
+    assert isinstance(hooks, dict), "hooks must be a dict keyed by event name"
+
+    # Each event must be one of Cursor's real names
+    real_events = {
+        "sessionStart", "sessionEnd",
+        "preToolUse", "postToolUse",
+        "beforeShellExecution", "beforeMCPExecution", "beforeReadFile",
+        "afterFileEdit", "beforeSubmitPrompt",
+        "preCompact", "stop", "afterAgentResponse",
+    }
+    for event_name in hooks.keys():
+        assert event_name in real_events, f"Unknown Cursor hook event: {event_name}"
+
+    # Each entry should use seconds (timeout) and failClosed, not timeout_ms / fail_open
+    for entries in hooks.values():
+        assert isinstance(entries, list)
+        for entry in entries:
+            assert "timeout" in entry, "Use 'timeout' (seconds), not 'timeout_ms'"
+            assert "timeout_ms" not in entry
+            assert "fail_open" not in entry, "Use 'failClosed' (inverted), not 'fail_open'"
+
+
+def test_f4_cursor_adapter_mcp_json_is_valid():
+    """mcp.json must match Cursor's mcpServers schema."""
+    repo_root = Path(__file__).parent.parent
+    mcp_template = repo_root / "adapters" / "cursor" / "mcp.json"
+    data = json.loads(mcp_template.read_text())
+    assert "mcpServers" in data
+    assert "world-model" in data["mcpServers"]
+    server = data["mcpServers"]["world-model"]
+    assert "command" in server
+    assert "args" in server
+
+
+def test_f4_cursor_adapter_bundled_in_package():
+    """v0.7.1: install-cursor CLI reads from the bundled adapter inside the package."""
+    from world_model_server import adapters  # noqa: F401
+    pkg_root = Path(adapters.__file__).parent
+    bundled_hooks = pkg_root / "cursor" / "hooks.json"
+    bundled_mcp = pkg_root / "cursor" / "mcp.json"
+    assert bundled_hooks.exists(), f"Missing bundled hooks.json at {bundled_hooks}"
+    assert bundled_mcp.exists(), f"Missing bundled mcp.json at {bundled_mcp}"
+
+
+def test_f4_install_cursor_cli_copies_files(tmp_path):
+    """Smoke: install-cursor CLI copies adapter into .cursor/."""
+    project = tmp_path / "proj"
+    project.mkdir()
+    result = subprocess.run(
+        ["python3", "-m", "world_model_server.cli", "install-cursor",
+         "--project-dir", str(project)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (project / ".cursor" / "mcp.json").exists()
+    assert (project / ".cursor" / "hooks.json").exists()
 
 
 # ============================================================================

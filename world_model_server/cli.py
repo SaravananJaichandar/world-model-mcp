@@ -473,6 +473,61 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def install_cursor_command(args):
+    """Copy the Cursor adapter (mcp.json, hooks.json, hook wrappers) into .cursor/."""
+    import shutil
+
+    project_dir = Path(args.project_dir).resolve()
+    cursor_dir = project_dir / ".cursor"
+    cursor_hooks_dir = cursor_dir / "hooks"
+    cursor_dir.mkdir(parents=True, exist_ok=True)
+    cursor_hooks_dir.mkdir(parents=True, exist_ok=True)
+
+    # Source: bundled adapter files inside the installed package
+    pkg_root = Path(__file__).parent
+    adapter_src = pkg_root / "adapters" / "cursor"
+    hook_js_src = pkg_root / "hooks"
+
+    copied = []
+
+    for filename in ("mcp.json", "hooks.json"):
+        src = adapter_src / filename
+        if not src.exists():
+            console.print(f"[red]Missing adapter file: {src}[/red]")
+            sys.exit(1)
+        dst = cursor_dir / filename
+        if dst.exists() and not args.force:
+            console.print(f"[yellow]skip[/yellow] {dst} (already exists; --force to overwrite)")
+            continue
+        shutil.copyfile(src, dst)
+        copied.append(str(dst.relative_to(project_dir)))
+
+    # The PreToolUse path uses the validate hook; the inject hook does both
+    # beforeSubmitPrompt and preCompact, so two JS files are enough.
+    for filename in ("world-model-validate.js", "world-model-inject.js"):
+        src = hook_js_src / filename
+        if not src.exists():
+            console.print(f"[yellow]warn[/yellow] missing hook wrapper: {src}; skipping")
+            continue
+        dst = cursor_hooks_dir / filename
+        if dst.exists() and not args.force:
+            console.print(f"[yellow]skip[/yellow] {dst} (already exists; --force to overwrite)")
+            continue
+        shutil.copyfile(src, dst)
+        copied.append(str(dst.relative_to(project_dir)))
+
+    if not copied:
+        console.print("[yellow]Nothing copied. Use --force to overwrite existing files.[/yellow]")
+        return
+
+    console.print("[green]Cursor adapter installed[/green]")
+    for path in copied:
+        console.print(f"  + {path}")
+    console.print(
+        "\nNext: restart Cursor and accept the one-click MCP install prompt for 'world-model'."
+    )
+
+
 def audit_compactions_command(args):
     """List or export compaction audit entries."""
     import asyncio
@@ -641,6 +696,13 @@ def main():
         "--project-dir", type=str, default=".", help="Project directory"
     )
     status_parser.set_defaults(func=status_command)
+
+    cursor_parser = subparsers.add_parser(
+        "install-cursor", help="Install the Cursor adapter into ./.cursor/"
+    )
+    cursor_parser.add_argument("--project-dir", type=str, default=".")
+    cursor_parser.add_argument("--force", action="store_true", help="Overwrite existing files")
+    cursor_parser.set_defaults(func=install_cursor_command)
 
     audit_parser = subparsers.add_parser(
         "audit-compactions", help="List or export compaction audit entries"

@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.7.0"
+version = "0.7.1"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -44,6 +44,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["world_model_server"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"world_model_server/adapters/cursor/hooks.json" = "world_model_server/adapters/cursor/hooks.json"
+"world_model_server/adapters/cursor/mcp.json" = "world_model_server/adapters/cursor/mcp.json"
+"world_model_server/hooks/world-model-capture.js" = "world_model_server/hooks/world-model-capture.js"
+"world_model_server/hooks/world-model-inject.js" = "world_model_server/hooks/world-model-inject.js"
+"world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"
+"world_model_server/hooks/world-model-validate.js" = "world_model_server/hooks/world-model-validate.js"
 
 [tool.black]
 line-length = 100
