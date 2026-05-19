@@ -11,6 +11,8 @@
 
 mcp-name: io.github.SaravananJaichandar/world-model-mcp
 
+> If world-model-mcp helped you, star the repo or open an issue with what worked or didn't. I read every one and the feedback shapes what ships next.
+
 ---
 
 ## What It Does
