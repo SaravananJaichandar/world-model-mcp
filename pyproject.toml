@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.7.1"
+version = "0.7.2"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -33,6 +33,11 @@ dev = [
     "black>=24.0.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
+    "httpx>=0.27.0",
+]
+http = [
+    "uvicorn>=0.30.0",
+    "starlette>=0.40.0",
 ]
 
 [project.scripts]

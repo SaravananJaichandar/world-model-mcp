@@ -687,10 +687,85 @@ async def main():
             logger.exception(error_msg)
             return [TextContent(type="text", text=error_msg)]
 
-    # Run the server
-    logger.info("Starting stdio server...")
-    async with stdio_server() as (read_stream, write_stream):
-        await server.run(read_stream, write_stream, server.create_initialization_options())
+    # Transport selection. Default: stdio (Claude Code / Cursor / .mcpb).
+    # Set WORLD_MODEL_TRANSPORT=http to expose streamable HTTP for remote/tunnel deployment.
+    transport = os.getenv("WORLD_MODEL_TRANSPORT", "stdio").lower()
+
+    if transport == "stdio":
+        logger.info("Starting stdio server...")
+        async with stdio_server() as (read_stream, write_stream):
+            await server.run(read_stream, write_stream, server.create_initialization_options())
+    elif transport == "http":
+        await _run_http(server)
+    else:
+        raise ValueError(
+            f"Unknown WORLD_MODEL_TRANSPORT={transport!r}; expected 'stdio' or 'http'"
+        )
+
+
+async def _run_http(server) -> None:
+    """Run the server over streamable HTTP for remote / MCP-tunnel deployment.
+
+    Listens on WORLD_MODEL_HTTP_HOST:WORLD_MODEL_HTTP_PORT (default 0.0.0.0:8765).
+    Exposes:
+      - the MCP endpoint at WORLD_MODEL_HTTP_PATH (default /mcp)
+      - a /healthz endpoint returning {"status": "ok", "version": "..."}
+    """
+    # Imports are deferred so the stdio path has zero new dependencies at runtime
+    # for environments that never enable HTTP.
+    import contextlib
+
+    try:
+        import uvicorn
+        from starlette.applications import Starlette
+        from starlette.responses import JSONResponse
+        from starlette.routing import Mount, Route
+        from starlette.types import Receive, Scope, Send
+    except ImportError as exc:
+        raise SystemExit(
+            "HTTP transport requested but uvicorn/starlette are not installed.\n"
+            "Install the optional 'http' extras:\n"
+            "  pip install 'world-model-mcp[http]'"
+        ) from exc
+
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    from . import __version__
+
+    host = os.getenv("WORLD_MODEL_HTTP_HOST", "0.0.0.0")
+    port = int(os.getenv("WORLD_MODEL_HTTP_PORT", "8765"))
+    mount_path = os.getenv("WORLD_MODEL_HTTP_PATH", "/mcp")
+    if not mount_path.startswith("/"):
+        mount_path = "/" + mount_path
+
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        event_store=None,  # in-memory; tunnel front-end is responsible for durability
+        stateless=False,
+    )
+
+    async def mcp_asgi(scope: Scope, receive: Receive, send: Send) -> None:
+        await session_manager.handle_request(scope, receive, send)
+
+    async def healthz(_request):
+        return JSONResponse({"status": "ok", "version": __version__})
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        async with session_manager.run():
+            yield
+
+    app = Starlette(
+        routes=[
+            Route("/healthz", healthz, methods=["GET"]),
+            Mount(mount_path, app=mcp_asgi),
+        ],
+        lifespan=lifespan,
+    )
+
+    logger.info(f"Starting HTTP server on {host}:{port} (mcp at {mount_path}, healthz at /healthz)")
+    config = uvicorn.Config(app, host=host, port=port, log_level="info", lifespan="on")
+    await uvicorn.Server(config).serve()
 
 
 if __name__ == "__main__":

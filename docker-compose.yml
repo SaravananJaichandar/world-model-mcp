@@ -1,0 +1,42 @@
+# docker-compose.yml -- HTTP / MCP-tunnel deployment of world-model-mcp.
+#
+# Use cases:
+#   1. Run world-model-mcp as a long-lived HTTP service inside your own perimeter
+#      and expose it to Claude Managed Agents via MCP tunnels.
+#   2. Run it behind ngrok / Cloudflare Tunnel for any MCP client that supports
+#      remote streamable-HTTP transport.
+#
+# Start:
+#   docker compose up -d
+# Status:
+#   docker compose ps
+#   curl http://127.0.0.1:8765/healthz
+# Logs:
+#   docker compose logs -f world-model
+#
+# For Claude Code / Cursor / .mcpb users the default stdio path is still the
+# right choice. Don't run this unless you need remote/HTTP transport.
+
+services:
+  world-model:
+    build:
+      context: .
+      dockerfile: Dockerfile.http
+    image: world-model-mcp:0.7.2-http
+    container_name: world-model-mcp
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - world-model-data:/data
+    environment:
+      WORLD_MODEL_TRANSPORT: "http"
+      WORLD_MODEL_HTTP_HOST: "0.0.0.0"
+      WORLD_MODEL_HTTP_PORT: "8765"
+      WORLD_MODEL_HTTP_PATH: "/mcp"
+      WORLD_MODEL_DB_PATH: "/data/world-model"
+      # Optional. Enables LLM-powered entity extraction on PostToolUse capture.
+      # ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+
+volumes:
+  world-model-data:

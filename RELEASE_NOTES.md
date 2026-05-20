@@ -1,5 +1,59 @@
 # World Model MCP - Release Notes
 
+## v0.7.2 (May 2026)
+
+Streamable HTTP transport for remote and MCP-tunnel deployments.
+
+### What's new
+
+Until v0.7.1 the server only spoke stdio, which is the right transport for
+Claude Code, Cursor, and `.mcpb` installs but does not work for deployments
+where the MCP server lives behind a firewall and the agent reaches it from
+Anthropic-side infrastructure. v0.7.2 adds an opt-in streamable HTTP
+transport so world-model-mcp can be deployed as a long-lived HTTP service
+inside the customer's own perimeter -- the configuration Claude Managed
+Agents' MCP tunnels (research preview) target.
+
+- **Streamable HTTP transport** -- set `WORLD_MODEL_TRANSPORT=http` to expose
+  the same 25 MCP tools over HTTP instead of stdio. Default stays stdio so
+  existing Claude Code / Cursor / .mcpb installs are unaffected.
+- **Environment variables**: `WORLD_MODEL_TRANSPORT`, `WORLD_MODEL_HTTP_HOST`
+  (default `0.0.0.0`), `WORLD_MODEL_HTTP_PORT` (default `8765`),
+  `WORLD_MODEL_HTTP_PATH` (default `/mcp`).
+- **`GET /healthz` endpoint** -- returns `{"status":"ok","version":"0.7.2"}`.
+  Cheap probe for Docker / Kubernetes / `ant tunnels` upstream health.
+- **`Dockerfile.http`** -- pre-built image that installs the `http` extras,
+  exposes port 8765, and includes a `HEALTHCHECK` directive. The original
+  `Dockerfile` (stdio, used by Glama) is unchanged.
+- **`docker-compose.yml`** -- reference compose file with persistent volume
+  for the SQLite database.
+- **`docs/deployment/mcp-tunnel.md`** -- end-to-end walkthrough including
+  `ant tunnels` setup for Claude Managed Agents.
+- **`[http]` optional extras** -- `pip install 'world-model-mcp[http]'`
+  pulls `uvicorn` and `starlette`. Stdio installs do not see these as
+  required dependencies.
+
+### Tests
+
+236 passing (was 223): added 13 v0.7.2 tests in
+`tests/test_v072_http_transport.py` covering transport selection, the
+`/healthz` endpoint, MCP path mounting, custom `WORLD_MODEL_HTTP_PATH`,
+helpful error on missing `http` extras, and backward-compat regression on
+the stdio path.
+
+### Backward compatibility
+
+- All 22 v0.6 MCP tools and all 25 v0.7 MCP tools work unchanged in both
+  transports
+- Default transport stays stdio: existing Claude Code / Cursor / .mcpb users
+  see zero behavior change
+- The Glama Dockerfile (no suffix) keeps its shape: stdio entrypoint, no port
+  exposed, no http extras
+- The Cursor adapter and PyPI install path are not affected
+- No schema migrations
+
+---
+
 ## v0.7.1 (May 2026)
 
 Patch release fixing the Cursor adapter shipped in v0.7.0.

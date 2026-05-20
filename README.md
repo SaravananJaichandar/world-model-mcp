@@ -69,6 +69,33 @@ world-model seed
 world-model seed --force
 ```
 
+### Option 3: HTTP transport for remote / MCP-tunnel deployment
+
+For Claude Managed Agents with self-hosted sandboxes, or any deployment where
+the MCP server lives behind a firewall and the agent reaches it from
+Anthropic-side infrastructure, run world-model-mcp in HTTP mode.
+
+```bash
+pip install 'world-model-mcp[http]'
+
+export WORLD_MODEL_TRANSPORT=http
+export WORLD_MODEL_HTTP_PORT=8765
+python -m world_model_server.server
+```
+
+Or use the bundled image:
+
+```bash
+docker compose up -d                    # Dockerfile.http + persistent volume
+curl http://127.0.0.1:8765/healthz      # {"status":"ok","version":"0.7.2"}
+```
+
+Full walkthrough including Anthropic MCP tunnels setup:
+[docs/deployment/mcp-tunnel.md](docs/deployment/mcp-tunnel.md).
+
+Stdio remains the default transport for Claude Code, Cursor, and `.mcpb`
+installs. Nothing changes for those flows.
+
 ### What Gets Installed
 
 ```
