@@ -39,11 +39,18 @@ from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Default backend. Embedded PAT is filled in by the release process via
-# WORLD_MODEL_TELEMETRY_TOKEN. When the env var is unset and no embedded
-# token is present at install time, telemetry is silently disabled.
+# Default backend. The embedded PAT is supplied at wheel-build time by
+# scripts/embed_token.py, which writes world_model_server/_embedded_token.py
+# from .env.release. The generated file is gitignored, so no token enters
+# source control. When _embedded_token.py is absent (typical for editable
+# installs and contributor wheels), the constant stays empty and telemetry
+# silently no-ops -- the user still controls consent, just no events fire.
 DEFAULT_REPO = "SaravananJaichandar/world-model-telemetry"
-_EMBEDDED_TOKEN = ""  # Filled at release time (kept empty in source)
+
+try:
+    from ._embedded_token import EMBEDDED_TOKEN as _EMBEDDED_TOKEN  # type: ignore[import]
+except ImportError:
+    _EMBEDDED_TOKEN = ""
 
 # Rate-limit window. 60s = at most 1 event/min from any one install.
 _RATE_LIMIT_SECONDS = 60.0

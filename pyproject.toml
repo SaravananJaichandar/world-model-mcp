@@ -60,6 +60,9 @@ packages = ["world_model_server"]
 "world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"
 "world_model_server/hooks/world-model-validate.js" = "world_model_server/hooks/world-model-validate.js"
 "scripts/demo_seed.py" = "scripts/demo_seed.py"
+# Generated at wheel-build time by scripts/embed_token.py. The file is
+# gitignored; force-include is a no-op when it doesn't exist locally.
+"world_model_server/_embedded_token.py" = "world_model_server/_embedded_token.py"
 
 [tool.black]
 line-length = 100

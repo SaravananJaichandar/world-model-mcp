@@ -82,3 +82,11 @@ GITHUB_RELEASE_v*.md
 **/credentials.json
 **/*_secret*.json
 **/*_private*.json
+
+# Release-time telemetry embedding (see scripts/embed_token.py).
+# .env.release holds the release-only PAT and must never enter git.
+# Note: world_model_server/_embedded_token.py IS committed as an empty stub
+# (EMBEDDED_TOKEN = "") so the wheel always builds; scripts/embed_token.py
+# overwrites it locally before a release build. Local modifications to that
+# file are ignored at commit time.
+.env.release
