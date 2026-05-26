@@ -1,5 +1,52 @@
 # World Model MCP - Release Notes
 
+## v0.7.3.1 (May 2026)
+
+Patch release that activates the opt-in telemetry path introduced in v0.7.3.
+
+### What changed
+
+- The PAT used to write opt-in telemetry events to
+  `SaravananJaichandar/world-model-telemetry` is now embedded in the wheel
+  at `world_model_server/_embedded_token.py`.
+- v0.7.3 shipped with that file as an empty stub (`EMBEDDED_TOKEN = ""`),
+  which made `record()` silently no-op even for users who opted in.
+  v0.7.3.1 ships the same file populated.
+- No code changes besides the version bumps. The embed mechanism
+  (`scripts/embed_token.py`, the gitignored `.env.release` file, the
+  release procedure in `RELEASE.md`) was added in the prior commit;
+  this release is the first one to actually use it end to end.
+
+### Security model recap
+
+The embedded token is scoped only to the telemetry repo with
+`Issues: Read and write`. Anyone who installs the wheel can extract it
+from `_embedded_token.py` -- this is intentional and standard for OSS
+telemetry. The worst-case attack is spamming the private telemetry repo
+with issues. If that happens: revoke, regenerate, ship v0.7.3.2.
+
+### User-visible behavior
+
+- Telemetry is still **off by default**. Existing installs behave
+  identically until the user explicitly opts in.
+- `world-model setup` still prompts once for consent.
+- `world-model telemetry --status` shows the install ID and a sample
+  payload. The status output's "Repo:" field now correlates with where
+  events would actually land.
+- `WORLD_MODEL_TELEMETRY_DISABLE=1` continues to override everything.
+
+### Tests
+
+262 passing (unchanged from v0.7.3). No new test surface; the embed-flow
+tests added in v0.7.3 cover the wiring.
+
+### Backward compatibility
+
+All v0.7.3 surface unchanged: 17 CLI subcommands, 25 MCP tools, Cursor /
+pi / .mcpb / HTTP transport all unaffected.
+
+---
+
 ## v0.7.3 (May 2026)
 
 Onboarding, opt-in telemetry, and a pi adapter. Existing surface unchanged.
