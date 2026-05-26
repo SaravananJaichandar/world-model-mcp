@@ -3,6 +3,7 @@ Command-line interface for world model operations.
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -105,7 +106,192 @@ def setup_command(args):
     seed_args = argparse.Namespace(project_dir=str(project_dir), force=False)
     seed_command(seed_args)
 
+    # v0.7.3: prompt for opt-in telemetry once
+    _maybe_prompt_for_telemetry(args)
+
     console.print("\nSetup complete. Restart Claude Code to activate hooks.")
+    console.print("Try [bold]world-model demo[/bold] for a guided tour of the primitives.")
+
+    # Telemetry: setup completed (no-op if user opted out / never asked)
+    try:
+        from . import telemetry as _telemetry
+        _telemetry.record("setup_completed", {"version_at_setup": True})
+    except Exception:
+        pass
+
+
+def _maybe_prompt_for_telemetry(args) -> None:
+    """Ask the user once whether to enable opt-in telemetry.
+
+    Skipped if --no-prompt is set, if WORLD_MODEL_NO_PROMPT=1, or if consent
+    has already been recorded (either way).
+    """
+    from . import telemetry as _telemetry
+
+    if getattr(args, "no_prompt", False):
+        return
+    if os.getenv("WORLD_MODEL_NO_PROMPT"):
+        return
+    if _telemetry.consent_status() != "unset":
+        return
+
+    if not sys.stdin.isatty():
+        # Non-interactive (CI, scripts). Don't make an assumption; leave unset
+        # so the user can run `world-model telemetry --enable` later.
+        return
+
+    console.print(
+        "\n[bold]Anonymous telemetry (opt-in)[/bold]"
+    )
+    console.print(
+        "world-model-mcp can send anonymous usage events (no file paths, no\n"
+        "code, no identifiers) to help shape what we ship next. You can\n"
+        "inspect the exact payload at any time with `world-model telemetry --status`\n"
+        "and disable it with `world-model telemetry --disable`.\n"
+    )
+    try:
+        answer = input("Enable telemetry? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = ""
+    enabled = answer in ("y", "yes")
+    _telemetry.set_consent(enabled)
+    console.print(
+        f"[green]Telemetry enabled.[/green] Thanks." if enabled
+        else "[yellow]Telemetry disabled.[/yellow] You can change this any time with `world-model telemetry --enable`."
+    )
+
+
+def telemetry_command(args):
+    """Show / enable / disable opt-in telemetry."""
+    from . import telemetry as _telemetry
+
+    if args.enable:
+        _telemetry.set_consent(True)
+        console.print("[green]Telemetry enabled.[/green]")
+        return
+    if args.disable:
+        _telemetry.set_consent(False)
+        console.print("[yellow]Telemetry disabled.[/yellow]")
+        return
+
+    # Default: --status
+    status = _telemetry.consent_status()
+    console.print(f"[bold]Telemetry status:[/bold] {status}")
+    console.print(f"Install ID:        {_telemetry.get_install_id()}")
+    console.print(f"Repo:              {_telemetry._resolve_repo()}")
+    console.print()
+    console.print("Sample payload that would be sent for setup_completed:")
+    import json as _json
+    sample = _telemetry.preview_payload("setup_completed", {"version_at_setup": True})
+    console.print(_json.dumps(sample, indent=2))
+
+
+def demo_command(args):
+    """Run a guided tour of world-model-mcp primitives on the current project.
+
+    Initializes the KG (if needed), seeds reproducible demo data, then runs
+    a sequence of queries and prints the actual JSON outputs so a new user
+    can see the primitives working without writing any code.
+    """
+    import asyncio
+    import json
+    import shutil
+    import subprocess
+
+    from .config import Config
+    from .knowledge_graph import KnowledgeGraph
+    from .tools import WorldModelTools
+
+    project_dir = Path(args.project_dir).resolve()
+    world_model_dir = project_dir / ".claude" / "world-model"
+
+    console.print("[bold]world-model-mcp guided demo[/bold]")
+    console.print(f"Project: {project_dir}\n")
+
+    # 1. Initialize the KG if needed
+    if not world_model_dir.exists():
+        console.print("Initializing world-model in this project...")
+        world_model_dir.mkdir(parents=True, exist_ok=True)
+
+    async def init_kg():
+        kg = KnowledgeGraph(str(world_model_dir))
+        await kg.initialize()
+        return kg
+
+    kg = asyncio.run(init_kg())
+    console.print(f"[green]ok[/green] knowledge graph initialized at {world_model_dir}")
+
+    # 2. Seed demo data via the same script users can re-run
+    repo_root = Path(__file__).resolve().parent.parent
+    seed_script = repo_root / "scripts" / "demo_seed.py"
+    if seed_script.exists():
+        console.print(f"\nRunning demo seed script (you can re-run this at any time):")
+        console.print(f"  python {seed_script.relative_to(repo_root)} --reset --seed-after-reset")
+        result = subprocess.run(
+            [sys.executable, str(seed_script), "--reset", "--seed-after-reset", "--project-dir", str(project_dir)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            console.print(f"[yellow]seed script failed:[/yellow] {result.stderr.strip()}")
+        else:
+            for line in result.stdout.strip().splitlines():
+                console.print(f"  {line}")
+    else:
+        console.print("[yellow]scripts/demo_seed.py not found; skipping seed[/yellow]")
+        console.print("(This is normal if you installed via pip and not a clone.)")
+
+    # 3. Exercise each primitive
+    async def exercise():
+        kg = KnowledgeGraph(str(world_model_dir))
+        await kg.initialize()
+        tools = WorldModelTools(kg, Config.from_env())
+
+        console.print("\n[bold]1. PreToolUse enforcement[/bold]")
+        from .hook_helper import classify as _classify
+        out = _classify({
+            "tool_name": "Edit",
+            "tool_input": {"file_path": "src/example.ts", "new_string": "console.log('debug')"},
+            "project_dir": str(project_dir),
+            "supports_defer": True,
+        })
+        decision = out.get("hookSpecificOutput", {}).get("permissionDecision", "(no constraints loaded yet)")
+        console.print(f"  Proposed: console.log in *.ts -> [bold]{decision}[/bold]")
+
+        console.print("\n[bold]2. Contradiction detection[/bold]")
+        pairs = await kg.find_contradictions(query="HTTP transport listen port", limit=5)
+        console.print(f"  {len(pairs)} contradicting pair(s) found")
+        if pairs:
+            p = pairs[0]
+            console.print(f"  a: {p['fact_a_text']}")
+            console.print(f"  b: {p['fact_b_text']}")
+            console.print(f"  confidence: a={p['confidence_a']} b={p['confidence_b']}; "
+                          f"sources: a={p['source_count_a']} b={p['source_count_b']}")
+
+        console.print("\n[bold]3. PostCompact injection bundle[/bold]")
+        inj_json = await tools.get_injection_context(event_type="PostCompact", max_constraints=5, max_facts=5)
+        inj = json.loads(inj_json)
+        console.print(f"  Would inject {inj['constraints_count']} constraints + {inj['facts_count']} facts.")
+
+        console.print("\n[bold]4. Compaction audit log[/bold]")
+        audit_json = await tools.get_compaction_audit(limit=3)
+        audit = json.loads(audit_json)
+        console.print(f"  {audit['count']} audit rows on file.")
+
+    asyncio.run(exercise())
+
+    console.print("\n[bold]Next:[/bold]")
+    console.print("  - Restart Claude Code; hooks are wired and will start capturing corrections.")
+    console.print("  - Run `world-model audit-compactions` after a session to see what was remembered.")
+    console.print("  - Run `world-model health` for a memory health report.")
+
+    # Telemetry: demo completed
+    try:
+        from . import telemetry as _telemetry
+        _telemetry.record("demo_run", {"seeded": seed_script.exists()})
+    except Exception:
+        pass
 
 
 def seed_command(args):
@@ -473,6 +659,47 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def install_pi_command(args):
+    """Copy the pi adapter (index.ts, package.json) into ./adapters/world-model-pi/.
+
+    For pi users with `pi install local:<path>` -- writes the adapter as a
+    self-contained directory the user can install via pi.
+    """
+    import shutil
+
+    target_dir = Path(args.target_dir).resolve() if args.target_dir else (
+        Path(args.project_dir).resolve() / "adapters" / "world-model-pi"
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    pkg_root = Path(__file__).parent
+    adapter_src = pkg_root / "adapters" / "pi"
+
+    copied = []
+    for filename in ("index.ts", "package.json"):
+        src = adapter_src / filename
+        if not src.exists():
+            console.print(f"[red]Missing bundled adapter file: {src}[/red]")
+            sys.exit(1)
+        dst = target_dir / filename
+        if dst.exists() and not args.force:
+            console.print(f"[yellow]skip[/yellow] {dst} (already exists; --force to overwrite)")
+            continue
+        shutil.copyfile(src, dst)
+        copied.append(str(dst))
+
+    if not copied:
+        console.print("[yellow]Nothing copied. Use --force to overwrite existing files.[/yellow]")
+        return
+
+    console.print("[green]Pi adapter installed[/green]")
+    for path in copied:
+        console.print(f"  + {path}")
+    console.print(
+        f"\nNext: install as a pi package with:\n  pi install local:{target_dir}"
+    )
+
+
 def install_cursor_command(args):
     """Copy the Cursor adapter (mcp.json, hooks.json, hook wrappers) into .cursor/."""
     import shutil
@@ -611,7 +838,28 @@ def main():
     setup_parser.add_argument(
         "--project-dir", type=str, default=".", help="Project directory"
     )
+    setup_parser.add_argument(
+        "--no-prompt", action="store_true",
+        help="Skip the opt-in telemetry prompt (useful for CI / scripted setup)",
+    )
     setup_parser.set_defaults(func=setup_command)
+
+    # Demo command (v0.7.3)
+    demo_parser = subparsers.add_parser(
+        "demo", help="Guided tour: seed reproducible data and exercise each primitive",
+    )
+    demo_parser.add_argument("--project-dir", type=str, default=".")
+    demo_parser.set_defaults(func=demo_command)
+
+    # Telemetry command (v0.7.3)
+    tel_parser = subparsers.add_parser(
+        "telemetry", help="Show, enable, or disable opt-in anonymous telemetry",
+    )
+    tel_group = tel_parser.add_mutually_exclusive_group()
+    tel_group.add_argument("--enable", action="store_true", help="Enable telemetry")
+    tel_group.add_argument("--disable", action="store_true", help="Disable telemetry")
+    tel_group.add_argument("--status", action="store_true", help="Show status + sample payload (default)")
+    tel_parser.set_defaults(func=telemetry_command)
 
     # Seed command
     seed_parser = subparsers.add_parser("seed", help="Seed knowledge graph from codebase")
@@ -703,6 +951,15 @@ def main():
     cursor_parser.add_argument("--project-dir", type=str, default=".")
     cursor_parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     cursor_parser.set_defaults(func=install_cursor_command)
+
+    pi_parser = subparsers.add_parser(
+        "install-pi", help="Install the pi adapter to ./adapters/world-model-pi/"
+    )
+    pi_parser.add_argument("--project-dir", type=str, default=".")
+    pi_parser.add_argument("--target-dir", type=str, default=None,
+                           help="Explicit target directory (default: <project-dir>/adapters/world-model-pi)")
+    pi_parser.add_argument("--force", action="store_true", help="Overwrite existing files")
+    pi_parser.set_defaults(func=install_pi_command)
 
     audit_parser = subparsers.add_parser(
         "audit-compactions", help="List or export compaction audit entries"

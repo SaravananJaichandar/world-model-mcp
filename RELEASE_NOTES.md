@@ -1,5 +1,68 @@
 # World Model MCP - Release Notes
 
+## v0.7.3 (May 2026)
+
+Onboarding, opt-in telemetry, and a pi adapter. Existing surface unchanged.
+
+### Headline
+
+v0.7.0 - v0.7.2 added the load-bearing primitives (constraint enforcement, PostCompact injection, contradiction resolution, HTTP transport). v0.7.3 attacks the second-order problem: a new user installing for the first time sees an empty database and has no path to the value. v0.7.3 ships three things to close that gap:
+
+1. **`world-model demo`** - a one-command guided tour that seeds reproducible data and exercises each primitive with real outputs.
+2. **Opt-in telemetry** - so future product decisions are informed by actual usage data, not download counts. Off by default, prompted once, inspectable.
+3. **pi adapter** - audience expansion to the 51k-star [earendil-works/pi](https://github.com/earendil-works/pi) ecosystem via a pi-package extension.
+
+### New features
+
+- **`world-model demo` (F1)** - new CLI subcommand. Initializes the world-model database (if missing), runs `scripts/demo_seed.py --reset --seed-after-reset` to populate realistic constraints, facts, a contradiction pair, and a compaction audit row, then prints the actual JSON output of each primitive (PreToolUse classify, find_contradictions, get_injection_context, get_compaction_audit). Reproducible end-to-end on a fresh clone.
+- **Opt-in telemetry (F2)** - new `world_model_server/telemetry.py` module. urllib-only (no new required deps), fail-open on any error, rate-limited to 1 event/60s per install, async fire-and-forget. New CLI subcommand `world-model telemetry` with `--enable / --disable / --status`. `world-model setup` prompts once for consent in interactive sessions; `--no-prompt` flag and `WORLD_MODEL_NO_PROMPT=1` env var skip the prompt for CI/scripted setup. Stable opaque `install_id` at `~/.world-model/install_id`. Destination: dedicated private GitHub repo `SaravananJaichandar/world-model-telemetry` (issues-write only). Global kill switch `WORLD_MODEL_TELEMETRY_DISABLE=1`. Never collects file paths, code, hostnames, IPs, rule names, or fact text. Full payload schema documented in README.
+- **pi adapter (F3)** - new `adapters/pi/` package and bundled copy at `world_model_server/adapters/pi/`. TypeScript extension subscribes to pi's `tool_call`, `context`, and `session_compact` events; spawns the existing Python `hook_helper` / `inject_helper` as subprocesses so the enforcement and injection logic stays in one place across Claude Code, Cursor, and pi. The `defer` enforcement tier is surfaced to pi as an advisory `block` with `[review]` prefix because pi has no defer tier. New CLI subcommand `world-model install-pi` writes the adapter into `<project>/adapters/world-model-pi/` for `pi install local:` consumption.
+
+### CLI surface
+
+- 17 CLI subcommands (was 14): added `demo`, `telemetry`, `install-pi`
+- 25 MCP tools (unchanged)
+
+### Tests
+
+256 passing (was 236). 20 new tests in `tests/test_v073_features.py` cover:
+- Telemetry off-by-default state, kill-switch precedence, install-id stability, no-token silent no-op, sync record returns False when disabled, preview payload omits sensitive keys, CLI subcommand status/enable/disable, setup `--no-prompt` flag
+- `world-model demo` runs cleanly on a fresh project, creates `.claude/world-model/`, exercises each primitive
+- pi adapter file existence, package.json schema, index.ts event wiring (`tool_call`/`context`/`session_compact` subscribed + correct helper modules invoked), bundled-in-package fixture, `install-pi` CLI with and without `--force`
+- Backward-compat regression: all v0.6 + v0.7.0 + v0.7.2 subcommands still registered, v0.7.2 HTTP transport still boots, setup in non-TTY environment doesn't hang
+
+### Backward compatibility
+
+- All 22 v0.6 MCP tools work unchanged
+- All 14 v0.7.2 CLI subcommands work unchanged (`setup`, `seed`, `query`, `decisions`, `register`, `projects`, `search-global`, `health`, `decay`, `recall`, `export-claude-md`, `migrate`, `status`, `audit-compactions`, `install-cursor`)
+- No schema migrations
+- No new required dependencies (telemetry uses stdlib `urllib`; HTTP transport extras unchanged)
+- Cursor adapter, .mcpb desktop extension, stdio transport, MCP tunnel deployment all unaffected
+- The Glama Dockerfile keeps its stdio shape
+
+### Versioning note
+
+`__version__` is now `0.7.3`. The v0.7.2 `test_f6_version_is_072` assertion was relaxed to `test_f6_version_is_at_least_072` to make future patch releases pass without manual test updates.
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+world-model demo   # see all primitives running on a fresh project
+```
+
+For existing users running `world-model setup` on a project that already has `.claude/world-model/`: the telemetry prompt appears once if you've never answered it, then never again.
+
+### Known gaps (still in v0.8 scope)
+
+- Antigravity adapter (Google's agentic IDE; replaces Gemini CLI which sunsets June 18, 2026)
+- Codex CLI adapter (OpenAI)
+- Cline + Continue adapters
+- Local web dashboard for the knowledge graph
+- AST-based extraction substrate
+
+---
+
 ## v0.7.2 (May 2026)
 
 Streamable HTTP transport for remote and MCP-tunnel deployments.

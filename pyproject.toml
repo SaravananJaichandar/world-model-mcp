@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.7.2"
+version = "0.7.3"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -53,10 +53,13 @@ packages = ["world_model_server"]
 [tool.hatch.build.targets.wheel.force-include]
 "world_model_server/adapters/cursor/hooks.json" = "world_model_server/adapters/cursor/hooks.json"
 "world_model_server/adapters/cursor/mcp.json" = "world_model_server/adapters/cursor/mcp.json"
+"world_model_server/adapters/pi/index.ts" = "world_model_server/adapters/pi/index.ts"
+"world_model_server/adapters/pi/package.json" = "world_model_server/adapters/pi/package.json"
 "world_model_server/hooks/world-model-capture.js" = "world_model_server/hooks/world-model-capture.js"
 "world_model_server/hooks/world-model-inject.js" = "world_model_server/hooks/world-model-inject.js"
 "world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"
 "world_model_server/hooks/world-model-validate.js" = "world_model_server/hooks/world-model-validate.js"
+"scripts/demo_seed.py" = "scripts/demo_seed.py"
 
 [tool.black]
 line-length = 100

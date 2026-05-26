@@ -1,0 +1,29 @@
+{
+  "name": "world-model-pi",
+  "version": "0.7.3",
+  "description": "world-model-mcp pi-package adapter -- temporal knowledge graph + constraint enforcement + post-compaction injection inside the pi coding agent.",
+  "main": "index.ts",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "coding-agent",
+    "memory",
+    "knowledge-graph",
+    "mcp",
+    "world-model-mcp"
+  ],
+  "license": "MIT",
+  "author": "SaravananJaichandar",
+  "homepage": "https://github.com/SaravananJaichandar/world-model-mcp/tree/main/adapters/pi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SaravananJaichandar/world-model-mcp.git",
+    "directory": "adapters/pi"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

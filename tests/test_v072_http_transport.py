@@ -296,6 +296,13 @@ def test_f6_stdio_imports_without_http_extras_failing():
     assert hasattr(srv, "_run_http")
 
 
-def test_f6_version_is_072():
+def test_f6_version_is_at_least_072():
+    """v0.7.2 introduced HTTP transport. Future patch versions must keep the
+    test passing without manual updates -- assert minor >= 7 and patch >= 2."""
     from world_model_server import __version__
-    assert __version__ == "0.7.2"
+    parts = __version__.split(".")
+    assert len(parts) >= 3
+    major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2].split("rc")[0].split("a")[0].split("b")[0])
+    assert (major, minor) >= (0, 7), f"Version regressed below 0.7.x: {__version__}"
+    if (major, minor) == (0, 7):
+        assert patch >= 2, f"HTTP transport requires v0.7.2+, got {__version__}"

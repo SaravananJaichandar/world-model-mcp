@@ -1,8 +1,8 @@
 # World Model MCP
 
-**Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code and Cursor.
+**Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.7.0** -- 25 MCP tools, 14 CLI subcommands, 220 tests. Adds PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, a compaction audit log, and a Cursor adapter. Contributions welcome.
+> **Status: v0.7.3** -- 25 MCP tools, 17 CLI subcommands, 256 tests. Adds a `world-model demo` guided tour, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,13 +29,20 @@ Think of it as a long-term memory layer that runs alongside Claude Code, Cursor,
 
 ---
 
-## What's new in v0.7.0
+## What's new in v0.7.3
+
+- **`world-model demo`** -- one command to see every primitive working. Initializes the knowledge graph, seeds reproducible demo data via `scripts/demo_seed.py`, then exercises each primitive (PreToolUse enforcement, contradiction detection, PostCompact injection, audit log) with real outputs. New users can see the value without writing any code.
+- **Opt-in telemetry** -- off by default, prompted once during `world-model setup`, inspectable with `world-model telemetry --status`, disabled with `world-model telemetry --disable`. No file paths, no code, no identifiers tied to a person. See [Privacy and Security](#privacy-and-security) for the exact payload.
+- **pi adapter** -- new `adapters/pi/` package. world-model-mcp now plugs into [earendil-works/pi](https://github.com/earendil-works/pi) via pi's extension API (`tool_call` -> PreToolUse, `context` -> auto-injection, `session_compact` -> audit log). Install with `world-model install-pi`.
+
+## What v0.7.0 introduced (still active)
 
 - **PostCompact / UserPromptSubmit auto-injection** -- when the agent's context is compacted, the hook automatically splices the top constraints and recent canonical facts back into the next turn. Configurable, fails open.
 - **`defer` enforcement tier** -- PreToolUse now classifies recurring warning-level violations as `defer`, which pauses headless agents (with graceful fallback to `ask` on older clients) instead of either hard-denying or silently passing through.
 - **Confidence-weighted contradiction resolution** -- the new `resolve_contradiction` tool picks a winner using `keep_higher_confidence`, `keep_most_recent`, `keep_most_sources`, or `auto`. The loser is marked superseded.
 - **Compaction audit log** -- every PostCompact event writes a row with pre/post token counts and what was re-injected. Query with the `audit-compactions` CLI or export to JSONL.
 - **Cursor adapter** -- harness-neutral hooks under `adapters/cursor/`. Same Python helpers, different manifest format.
+- **Streamable HTTP transport (v0.7.2)** -- `WORLD_MODEL_TRANSPORT=http` so the same 25 MCP tools work behind an MCP tunnel for Claude Managed Agents with self-hosted sandboxes. See [docs/deployment/mcp-tunnel.md](docs/deployment/mcp-tunnel.md).
 
 ---
 
@@ -95,6 +102,30 @@ Full walkthrough including Anthropic MCP tunnels setup:
 
 Stdio remains the default transport for Claude Code, Cursor, and `.mcpb`
 installs. Nothing changes for those flows.
+
+### Option 4: Run the guided demo (no Claude Code required)
+
+To see every primitive working with real outputs from a real SQLite database before committing to a full install:
+
+```bash
+pip install world-model-mcp
+cd /tmp/wm-test && mkdir -p wm-test && cd wm-test
+world-model demo
+```
+
+The demo initializes a knowledge graph, seeds reproducible data, and exercises PreToolUse enforcement, contradiction detection, the PostCompact injection bundle, and the compaction audit log -- with the actual JSON outputs. Re-runs are idempotent.
+
+### Option 5: Run inside pi (experimental)
+
+For users of [earendil-works/pi](https://github.com/earendil-works/pi):
+
+```bash
+pip install world-model-mcp           # the Python helpers
+world-model install-pi                # writes adapters/world-model-pi/
+pi install local:./adapters/world-model-pi
+```
+
+The pi adapter wires the same `hook_helper` and `inject_helper` you'd use from Claude Code into pi's `tool_call`, `context`, and `session_compact` events. See [adapters/pi/README.md](adapters/pi/README.md).
 
 ### What Gets Installed
 
@@ -376,17 +407,41 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 
 ## Privacy and Security
 
-- **Local-First**: All data stays on your machine
-- **No Telemetry**: Zero tracking or external data transmission
-- **Optional LLM**: Works without API key (uses regex patterns as fallback)
-- **Encrypted Storage**: SQLite databases are local files (encrypt your disk for security)
+- **Local-First**: All knowledge graph data stays on your machine.
+- **Optional LLM**: Works without API key (uses regex patterns as fallback).
+- **Encrypted Storage**: SQLite databases are local files (encrypt your disk for security).
 
-**API Key Usage** (only if you provide `ANTHROPIC_API_KEY`):
+### Telemetry (opt-in, off by default)
+
+v0.7.3 added anonymous usage telemetry. It is:
+
+- **Off by default.** You have to explicitly opt in.
+- **Asked once** during `world-model setup`, with a clear `y/N` prompt.
+- **Inspectable**: `world-model telemetry --status` shows the exact JSON payload that would be sent.
+- **Disable any time** with `world-model telemetry --disable`, or globally with `WORLD_MODEL_TELEMETRY_DISABLE=1`.
+- **Skipped in non-TTY environments** (CI, scripts) so it never blocks an automated setup.
+
+**What we send (only if you opt in):**
+
+| Field | Example | Why |
+| --- | --- | --- |
+| `event` | `setup_completed`, `demo_run`, `hook_fired` | Which lifecycle step ran |
+| `version` | `0.7.3` | Which release you're on |
+| `install_id` | random UUID at `~/.world-model/install_id` | Distinguish installs without identifying users |
+| `ts` | unix timestamp | When the event fired |
+
+**What we never send:** file paths, file contents, rule names, hostnames, IP addresses, API keys, decision-trace text, fact text, or anything else that could identify a person or leak business logic. The full payload schema lives in `world_model_server/telemetry.py`.
+
+**Where it goes:** opt-in events are posted to a dedicated private GitHub repo (`SaravananJaichandar/world-model-telemetry`) as plain issues. There is no third-party analytics service, no cookie, no fingerprint. The PAT embedded in the client is scoped to that one repo with `Issues: write` only.
+
+### API Key Usage (only if you provide `ANTHROPIC_API_KEY`)
+
 - Entity extraction from code changes
 - Constraint inference from corrections
 - Never sends: Credentials, secrets, PII
 
-**Security Best Practices**:
+### Security Best Practices
+
 - Never commit `.env` files
 - Use `.env.example` as template
 - Store API keys in environment variables or `.env` files only
@@ -435,20 +490,32 @@ Edit `.claude/settings.json` to customize which tools trigger world model hooks:
 - [x] Desktop Extension (.mcpb) packaging for Claude Desktop
 - [x] 22 MCP tools, 13 CLI subcommands, 186 tests
 
-### v0.7.0 (Current) — Auto-injection, defer tier, contradiction resolution, harness adapters
+### v0.7.0 — Auto-injection, defer tier, contradiction resolution, harness adapters
 - [x] PostCompact and UserPromptSubmit auto-injection: re-emit top constraints and recent facts after context loss
 - [x] `defer` enforcement tier in PreToolUse: pause headless agents on recurring warning-level violations, with graceful fallback to `ask`
 - [x] Confidence-weighted contradiction resolution: pick a winner using confidence, recency, or source count, with an `auto` strategy
 - [x] Compaction audit log: query and export what was remembered across each compaction boundary
-- [x] Cursor adapter package: harness-neutral hooks (`beforeSubmitPrompt`, `beforeEdit`, `afterCompact`)
+- [x] Cursor adapter package
 - [x] 25 MCP tools, 14 CLI subcommands, 220 tests
 
+### v0.7.2 — Streamable HTTP transport
+- [x] HTTP transport mode for remote / MCP-tunnel deployment
+- [x] /healthz endpoint, Dockerfile.http, docker-compose.yml
+- [x] docs/deployment/mcp-tunnel.md walkthrough for Claude Managed Agents
+- [x] 236 tests
+
+### v0.7.3 (Current) — Onboarding, telemetry, pi adapter
+- [x] `world-model demo` guided tour for first-time users
+- [x] Opt-in anonymous telemetry, off by default, inspectable
+- [x] pi-package adapter (`adapters/pi/`, `install-pi` CLI)
+- [x] 17 CLI subcommands, 256 tests
+
 ### v0.8.0 (Next)
-- [ ] Cline and Codex adapters
+- [ ] Antigravity adapter (Google's agentic IDE, replaces Gemini CLI)
+- [ ] Codex CLI adapter (OpenAI)
+- [ ] Cline and Continue adapters
 - [ ] Local web dashboard for the knowledge graph
 - [ ] Evidence-weighted decay: constraints persist, low-evidence assertions expire
-- [ ] AST-based extraction as substrate for the temporal layer
-- [ ] Org-wide constraint federation
 
 ---
 
