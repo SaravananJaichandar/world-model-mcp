@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.7.3** -- 25 MCP tools, 17 CLI subcommands, 256 tests. Adds a `world-model demo` guided tour, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
+> **Status: v0.7.4** -- 26 MCP tools, 17 CLI subcommands, 283 tests. Adds an AGENTS.md / `.agents/skills/` constraint reader, a self-hosted Claude Managed Agents deployment guide (with a Modal quickstart), and a reproducible contradiction-resolution benchmark (93.5% overall, 100% on `keep_higher_confidence` and `keep_most_sources`). v0.7.3 added a `world-model demo` guided tour, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,12 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.7.4
+
+- **AGENTS.md / `.agents/skills/` constraint reader** -- world-model-mcp now reads declarative project conventions from `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `.agents/skills/*.md` files and mixes them into PreToolUse enforcement alongside the SQLite-backed constraints. Supports structured fence blocks (```` ```constraint ```` and YAML frontmatter) and heuristic imperative-sentence extraction for prose-style AGENTS.md files. New MCP tool: `get_agents_md_constraints`. ([anthropics/claude-code#6235](https://github.com/anthropics/claude-code/issues/6235) has 4,000+ thumbs-up for AGENTS.md as the cross-agent format.)
+- **Self-hosted Claude Managed Agents deployment guide** -- Anthropic's [official position](https://claude.com/blog/claude-managed-agents-updates): *"Memory is not yet supported in self-hosted sessions."* world-model-mcp fills that gap. New guide at [`docs/deployment/managed-agents-self-hosted.md`](docs/deployment/managed-agents-self-hosted.md), with a [Modal quickstart](examples/managed-agents-self-hosted/) you can deploy in under five minutes.
+- **Reproducible contradiction-resolution benchmark** -- 24-pair dataset at [`benchmarks/contradictions/dataset.jsonl`](benchmarks/contradictions/dataset.jsonl), runner at [`benchmarks/contradictions/run.py`](benchmarks/contradictions/run.py), results at [`benchmarks/contradictions/RESULTS.md`](benchmarks/contradictions/RESULTS.md). Headline: 93.5% overall accuracy, 100% on `keep_higher_confidence` and `keep_most_sources`, with documented honest weaknesses on tie-handling and small confidence gaps. Re-run with `python benchmarks/contradictions/run.py`. CI workflow guards regressions.
 
 ## What's new in v0.7.3
 
@@ -505,17 +511,24 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] docs/deployment/mcp-tunnel.md walkthrough for Claude Managed Agents
 - [x] 236 tests
 
-### v0.7.3 (Current) — Onboarding, telemetry, pi adapter
+### v0.7.3 — Onboarding, telemetry, pi adapter
 - [x] `world-model demo` guided tour for first-time users
 - [x] Opt-in anonymous telemetry, off by default, inspectable
 - [x] pi-package adapter (`adapters/pi/`, `install-pi` CLI)
 - [x] 17 CLI subcommands, 256 tests
 
+### v0.7.4 (Current) — Interop, deployment, benchmark
+- [x] AGENTS.md / `.agents/skills/` constraint reader (new MCP tool: `get_agents_md_constraints`)
+- [x] Self-hosted Claude Managed Agents deployment guide + Modal quickstart
+- [x] Reproducible contradiction-resolution benchmark (24-pair dataset, CI workflow, RESULTS.md)
+- [x] 26 MCP tools, 17 CLI subcommands, 283 tests
+
 ### v0.8.0 (Next)
-- [ ] Antigravity adapter (Google's agentic IDE, replaces Gemini CLI)
-- [ ] Codex CLI adapter (OpenAI)
-- [ ] Cline and Continue adapters
-- [ ] Local web dashboard for the knowledge graph
+- [ ] Codex CLI adapter (OpenAI; v0.133.0 shipped SubagentStart/SubagentStop hooks May 21)
+- [ ] Antigravity CLI adapter (Google; Gemini CLI sunsets June 18, 2026)
+- [ ] MCP spec 2026-07-28 readiness (stateless transport, `_meta` headers, `InputRequiredResult`)
+- [ ] In-agent `/world-model` slash command + TUI status widget (replaces standalone dashboard)
+- [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86)
 - [ ] Evidence-weighted decay: constraints persist, low-evidence assertions expire
 
 ---

@@ -884,6 +884,27 @@ class WorldModelTools:
         return md
 
     # ============================================================================
+    # v0.7.4 F1: AGENTS.md / .agents/skills/ constraint reader
+    # ============================================================================
+
+    async def get_agents_md_constraints(
+        self,
+        project_dir: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> str:
+        """Return declarative constraints parsed from AGENTS.md, CLAUDE.md,
+        GEMINI.md, and .agents/skills/*.md files in the project.
+
+        These are mixed into PreToolUse enforcement alongside SQLite
+        constraints (warn/info tier; never hard-deny on their own).
+        """
+        from .agents_md_reader import to_json, virtual_constraints_for
+        from pathlib import Path as _Path
+        project_dir = project_dir or "."
+        rows = virtual_constraints_for(_Path(project_dir).resolve(), file_path)
+        return to_json(rows)
+
+    # ============================================================================
     # v0.7.0 F3: Confidence-weighted contradiction resolution
     # ============================================================================
 

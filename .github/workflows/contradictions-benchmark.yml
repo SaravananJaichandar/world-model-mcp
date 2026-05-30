@@ -1,0 +1,58 @@
+name: contradictions-benchmark
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'world_model_server/contradictions.py'
+      - 'benchmarks/contradictions/**'
+      - '.github/workflows/contradictions-benchmark.yml'
+  pull_request:
+    paths:
+      - 'world_model_server/contradictions.py'
+      - 'benchmarks/contradictions/**'
+  workflow_dispatch:
+
+jobs:
+  run-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: |
+          pip install -e .
+
+      - name: Run benchmark
+        run: |
+          python benchmarks/contradictions/run.py --out results.json
+          cat results.json | python -c "import json,sys; d=json.load(sys.stdin); print(f'accuracy={d[\"accuracy\"]:.3f} passed={d[\"passed\"]}/{d[\"total\"]}')"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: results.json
+          retention-days: 30
+
+      - name: Regression guard
+        # Fail the job if accuracy drops below the documented baseline.
+        run: |
+          python -c "
+          import json
+          d = json.load(open('results.json'))
+          assert d['accuracy'] is not None
+          # Hard floor: do not let overall accuracy regress under 90%.
+          # Bump this floor when RESULTS.md is updated to a higher baseline.
+          assert d['accuracy'] >= 0.90, f'Benchmark regressed: {d[\"accuracy\"]:.3f} < 0.90'
+          # Per-strategy floors
+          by = d['by_strategy']
+          assert by['keep_higher_confidence']['accuracy'] >= 0.95, by['keep_higher_confidence']
+          assert by['keep_most_sources']['accuracy'] >= 0.95, by['keep_most_sources']
+          print('Regression guard: passed')
+          "

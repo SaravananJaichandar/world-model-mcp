@@ -453,6 +453,17 @@ async def main():
                 },
             ),
             Tool(
+                name="get_agents_md_constraints",
+                description="Parse AGENTS.md / CLAUDE.md / GEMINI.md / .agents/skills/*.md in the project and return declarative constraints. Mixed into PreToolUse enforcement automatically; this tool exposes the same data for inspection.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "project_dir": {"type": "string"},
+                        "file_path": {"type": "string"},
+                    },
+                },
+            ),
+            Tool(
                 name="resolve_contradiction",
                 description="Pick a winner between two contradicting facts using a confidence-weighted strategy (auto, keep_higher_confidence, keep_most_recent, keep_most_sources, supersede_a, supersede_b, manual).",
                 inputSchema={
@@ -665,6 +676,13 @@ async def main():
                 result = await tools.get_compaction_audit(
                     session_id=arguments.get("session_id"),
                     limit=arguments.get("limit", 50),
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_agents_md_constraints":
+                result = await tools.get_agents_md_constraints(
+                    project_dir=arguments.get("project_dir"),
+                    file_path=arguments.get("file_path"),
                 )
                 return [TextContent(type="text", text=result)]
 

@@ -1,5 +1,67 @@
 # World Model MCP - Release Notes
 
+## v0.7.4 (May 2026)
+
+Interop, deployment, benchmark. No new adapters this release -- positioning over distribution surface.
+
+### Headline
+
+v0.7.0 through v0.7.3.1 shipped the primitives and the channels. v0.7.4 ships three things that connect them to what the ecosystem actually asked for: read the format the community standardized on, deploy where the platform left a memory gap, and publish numbers for the contradiction-resolution claim instead of just asserting it.
+
+### New features
+
+- **AGENTS.md / `.agents/skills/` constraint reader (F1)** -- new `world_model_server/agents_md_reader.py` parses `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, and `.agents/skills/*.md` files into virtual constraints that mix into PreToolUse enforcement alongside the SQLite-backed constraints. Supports three extraction modes:
+  1. Structured fence blocks (`` ```constraint `` ... `` ``` ``)
+  2. YAML frontmatter with a `constraints:` list
+  3. Heuristic imperative-sentence extraction ("Use X", "Never Y", "Always Z", "Prefer A over B") for prose-style AGENTS.md files
+
+  The fence + frontmatter modes use no external YAML dependency -- the parser is hand-rolled to keep stdio installs zero-dep. Heuristic mode produces virtual constraints with severity `warning` (for strong verbs) or `info` (for soft verbs) so they never hard-deny on their own. New MCP tool: `get_agents_md_constraints`. Motivated by [anthropics/claude-code#6235](https://github.com/anthropics/claude-code/issues/6235) (4,000+ thumbs-up).
+
+- **Self-hosted Claude Managed Agents deployment guide (F2)** -- new doc at `docs/deployment/managed-agents-self-hosted.md` plus a complete Modal quickstart under `examples/managed-agents-self-hosted/` (`deploy_modal.py` + `ant-setup.sh`). Targets the exact gap Anthropic's [May 19 blog post](https://claude.com/blog/claude-managed-agents-updates) named: *"Memory is not yet supported in self-hosted sessions."* world-model-mcp's streamable HTTP transport plus MCP tunnels covers that case. Deploy on Modal in ~5 minutes; wire into Anthropic with two `ant` CLI commands.
+
+- **Contradiction-resolution benchmark (F3)** -- new `benchmarks/contradictions/` with a 24-pair dataset, deterministic runner, and committed results. Headline numbers: **93.5% overall**, **100% on `keep_higher_confidence` and `keep_most_sources`**, 90.9% on `keep_most_recent`, 87.5% on `auto`. RESULTS.md documents four honest failures (true-tie handling, sub-0.1 confidence gaps) instead of hiding them. New GitHub Actions workflow re-runs the benchmark on every push to `world_model_server/contradictions.py` and fails on regressions. Reproducible with one command: `python benchmarks/contradictions/run.py`.
+
+### Why these three, not more adapters
+
+The deep ecosystem sweep (run May 29) showed three things:
+
+1. **mcp-memory-service shipped 22 releases in May**, including NLI contradiction detection (v10.67.0 May 28), a `/memory` slash + TUI sidebar (v10.65.0 May 24), and passive observation (v10.70.1 May 29). Building another web dashboard would have been me-too.
+2. **The single most-engaged feature request across the entire space is AGENTS.md adoption** (claude-code #6235, 4,000+ thumbs-up). Already adopted natively by Zed (v1.4) and Cline (v3.86). Reading AGENTS.md is the highest-leverage interop bet available.
+3. **Anthropic's own blog admits self-hosted Managed Agents have no memory primitive yet.** We already ship the HTTP transport. What was missing was the *deployment recipe* that lets enterprise users connect the dots.
+
+The next-most-time-sensitive opportunities (Codex CLI adapter, Antigravity CLI adapter before June 18, MCP-spec 2026-07-28 refactor) move to v0.8.0. The standalone web dashboard, Continue adapter, and superagent-ai/grok-cli adapter were dropped from the roadmap entirely.
+
+### Tool and CLI surface
+
+- 26 MCP tools (was 25): added `get_agents_md_constraints`
+- 17 CLI subcommands (unchanged)
+
+### Tests
+
+283 passing (was 262): 21 new tests in `tests/test_v074_features.py` cover the AGENTS.md reader (10 tests including fence extraction, frontmatter, imperative sentences, glob filtering, dedup across files, severity normalization, MCP tool, hook integration), the self-hosted deployment doc artifacts (3 tests), and the benchmark (4 tests including end-to-end run). Plus 3 backward-compat regression tests and an updated version assertion.
+
+### Backward compatibility
+
+- All 25 v0.7.3.1 MCP tools and all 17 CLI subcommands work unchanged
+- AGENTS.md mixing into `hook_helper.classify()` is additive -- when no AGENTS.md files exist, the behavior is identical to v0.7.3.1
+- No schema migrations
+- No new required dependencies (the AGENTS.md parser uses only stdlib)
+- Cursor / pi adapters, .mcpb desktop extension, stdio transport, HTTP transport (v0.7.2), MCP tunnel deployment (v0.7.2), `world-model demo` (v0.7.3), telemetry (v0.7.3.1) all unaffected
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+# Existing projects auto-pick-up AGENTS.md / .agents/skills/ on the next
+# PreToolUse hook fire -- no setup step required.
+```
+
+For self-hosted Managed Agents users: see `docs/deployment/managed-agents-self-hosted.md`.
+
+For the benchmark: `python benchmarks/contradictions/run.py` from a clone.
+
+---
+
 ## v0.7.3.1 (May 2026)
 
 Patch release that activates the opt-in telemetry path introduced in v0.7.3.

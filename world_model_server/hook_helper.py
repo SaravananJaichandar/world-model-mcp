@@ -119,6 +119,17 @@ def classify(payload: dict) -> dict:
     db_path = str(Path(project_dir) / ".claude" / "world-model")
     all_constraints = _load_constraints(db_path)
 
+    # v0.7.4: also mix in declarative constraints from AGENTS.md /
+    # .agents/skills/*.md / CLAUDE.md. These never hard-deny on their own
+    # because they have no violation history -- they ride the warn/info tiers.
+    try:
+        from .agents_md_reader import virtual_constraints_for as _virt
+        agents_md_constraints = _virt(project_dir, file_path)
+        if agents_md_constraints:
+            all_constraints = list(all_constraints) + list(agents_md_constraints)
+    except Exception as exc:  # pragma: no cover - fail open
+        logger.debug("AGENTS.md merge skipped: %s", exc)
+
     if not all_constraints:
         return {}
 
