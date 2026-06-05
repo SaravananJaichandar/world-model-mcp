@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.7.4** -- 26 MCP tools, 17 CLI subcommands, 283 tests. Adds an AGENTS.md / `.agents/skills/` constraint reader, a self-hosted Claude Managed Agents deployment guide (with a Modal quickstart), and a reproducible contradiction-resolution benchmark (93.5% overall, 100% on `keep_higher_confidence` and `keep_most_sources`). v0.7.3 added a `world-model demo` guided tour, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact / UserPromptSubmit auto-injection, the `defer` enforcement tier for headless agents, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
+> **Status: v0.7.5** -- 26 MCP tools, 18 CLI subcommands, 304 tests. Adds a Codex CLI adapter (`install-codex` wires world-model-mcp into `~/.codex/config.toml` with PreToolUse / PostCompact / PostToolUse / SessionStart hooks). v0.7.4 added an AGENTS.md constraint reader, a self-hosted Claude Managed Agents deployment guide, and a reproducible contradiction-resolution benchmark (93.5% overall). v0.7.3 added a guided demo, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,12 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.7.5
+
+- **Codex CLI adapter** -- new `install-codex` CLI subcommand appends a `[mcp_servers.world_model]` block plus PreToolUse, PostToolUse, PostCompact, and SessionStart hooks to `~/.codex/config.toml`. The bundled snippet was verified against `openai/codex@main` at v0.138.0-alpha (server name uses underscore to dodge the tool-name hyphen-strip in `codex-rs/codex-mcp/src/mcp/mod.rs`; hook output sticks to camelCase with `deny_unknown_fields` compliance). Schema regression tests in `tests/test_v075_features.py` lock the contract down. See [adapters/codex/README.md](adapters/codex/README.md).
+- **Dual-shape payload normalization in `hook_helper` and `inject_helper`** -- both helpers now accept either Claude Code's payload shape (`event`, `project_dir`) or Codex's (`hook_event_name`, `cwd`), so the same Python code drives all four adapters (Claude Code, Cursor, pi, Codex).
+- **Antigravity CLI adapter intentionally NOT shipped this release** -- the Antigravity API surface is still settling (six 1.0.x releases in three weeks, the `url` field for HTTP MCP servers landed June 3, hook JSON event-name casing remains undocumented). Targeting June 25 for that adapter after the API stabilizes. Detailed reasoning in the v0.7.5 RELEASE_NOTES entry.
 
 ## What's new in v0.7.4
 
@@ -133,6 +139,19 @@ pi install local:./adapters/world-model-pi
 ```
 
 The pi adapter wires the same `hook_helper` and `inject_helper` you'd use from Claude Code into pi's `tool_call`, `context`, and `session_compact` events. See [adapters/pi/README.md](adapters/pi/README.md).
+
+### Option 6: Run inside Codex CLI (experimental)
+
+For users of OpenAI's [Codex CLI](https://github.com/openai/codex):
+
+```bash
+pip install world-model-mcp                # the Python helpers
+python -m world_model_server.cli install-codex
+# (appends [mcp_servers.world_model] + hook blocks to ~/.codex/config.toml)
+# Restart codex; verify with: codex mcp list
+```
+
+`--dry-run` prints what would be appended without writing; `--force` re-appends even if the adapter marker is already present. The bundled snippet uses `world_model` (underscore) as the MCP server name to dodge Codex's silent hyphen-strip in its tool-name sanitizer. Hook output is camelCase with `deny_unknown_fields` compliance against Codex's strict Rust schema; the contract is locked down by tests in `tests/test_v075_features.py`. See [adapters/codex/README.md](adapters/codex/README.md).
 
 ### What Gets Installed
 

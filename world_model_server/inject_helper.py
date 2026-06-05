@@ -137,7 +137,32 @@ def _write_audit_row(
         return None
 
 
+def _normalize_payload(payload: dict) -> dict:
+    """Accept payload from either Claude Code hooks or Codex CLI hooks.
+
+    Claude Code keys: ``event``, ``project_dir``, ``session_id``,
+    ``user_prompt``, ``pre_compact_tokens``, ``post_compact_tokens``.
+
+    Codex CLI keys: ``hook_event_name``, ``cwd``, ``session_id``,
+    ``transcript_path``, ``model``, ``permission_mode`` plus event-specific
+    fields. Codex does not pass ``project_dir`` (uses ``cwd``) nor
+    ``pre/post_compact_tokens`` (we leave those None).
+
+    Returns a normalized dict with Claude-Code-shaped keys so the rest of
+    ``build_injection`` does not have to branch.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    normalized = dict(payload)
+    if "event" not in normalized and "hook_event_name" in normalized:
+        normalized["event"] = normalized["hook_event_name"]
+    if "project_dir" not in normalized and "cwd" in normalized:
+        normalized["project_dir"] = normalized["cwd"]
+    return normalized
+
+
 def build_injection(payload: dict) -> dict:
+    payload = _normalize_payload(payload)
     event = payload.get("event", "")
     project_dir = payload.get("project_dir", ".")
     session_id = payload.get("session_id")

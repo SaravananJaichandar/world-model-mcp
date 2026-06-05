@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.7.4"
+version = "0.7.5"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -55,6 +55,8 @@ packages = ["world_model_server"]
 "world_model_server/adapters/cursor/mcp.json" = "world_model_server/adapters/cursor/mcp.json"
 "world_model_server/adapters/pi/index.ts" = "world_model_server/adapters/pi/index.ts"
 "world_model_server/adapters/pi/package.json" = "world_model_server/adapters/pi/package.json"
+"world_model_server/adapters/codex/config.toml" = "world_model_server/adapters/codex/config.toml"
+"world_model_server/adapters/codex/hooks_snippet.toml" = "world_model_server/adapters/codex/hooks_snippet.toml"
 "world_model_server/hooks/world-model-capture.js" = "world_model_server/hooks/world-model-capture.js"
 "world_model_server/hooks/world-model-inject.js" = "world_model_server/hooks/world-model-inject.js"
 "world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"

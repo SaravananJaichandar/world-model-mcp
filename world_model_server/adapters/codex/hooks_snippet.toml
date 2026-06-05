@@ -1,0 +1,57 @@
+# world-model-mcp hooks for Codex CLI
+#
+# Append to ~/.codex/config.toml AFTER the [mcp_servers.world_model] block.
+#
+# How it works
+# ------------
+# Codex runs each hook command through $SHELL -lc and passes the hook
+# payload as JSON on stdin. Both helpers read stdin and emit a strict
+# camelCase JSON response on stdout. Codex enforces deny_unknown_fields
+# on hook output - the bundled helpers emit only documented fields, so
+# do not edit the command strings without re-running the schema tests
+# in tests/test_v075_features.py.
+#
+# Events wired:
+#   PreToolUse  -> hook_helper: deny / ask / allow based on learned
+#                  constraints. Matches Edit / Write / MultiEdit / Bash.
+#   PostToolUse -> inject_helper: captures the edit as a fact in the
+#                  knowledge graph. Matches edit-family tools only.
+#   PostCompact -> inject_helper: returns additionalContext with top
+#                  constraints and recent canonical facts after a
+#                  compaction event. Matches all (matcher = "*").
+#   SessionStart -> inject_helper: warm-start injection on resume.
+#
+# All four use the same Python subprocess pattern, with WORLD_MODEL_DB_PATH
+# inherited from the parent shell or the env block in the MCP server config.
+
+[[hooks.PreToolUse]]
+matcher = "Edit|Write|MultiEdit|Bash"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "python3 -m world_model_server.hook_helper"
+timeout = 8
+
+[[hooks.PostToolUse]]
+matcher = "Edit|Write|MultiEdit"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "python3 -m world_model_server.inject_helper"
+timeout = 10
+
+[[hooks.PostCompact]]
+matcher = "*"
+
+[[hooks.PostCompact.hooks]]
+type = "command"
+command = "python3 -m world_model_server.inject_helper"
+timeout = 6
+
+[[hooks.SessionStart]]
+matcher = "*"
+
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "python3 -m world_model_server.inject_helper"
+timeout = 5

@@ -1,5 +1,70 @@
 # World Model MCP - Release Notes
 
+## v0.7.5 (June 2026)
+
+Codex CLI adapter. Antigravity adapter intentionally deferred.
+
+### Headline
+
+OpenAI's Codex CLI shipped first-class hook and MCP support that maps cleanly onto world-model-mcp's existing primitives. v0.7.5 adds the adapter that wires both together. The Antigravity CLI adapter was on the same roadmap but is held until late June because the Antigravity API surface is still settling (six 1.0.x releases in three weeks; the `url` field for HTTP MCP servers landed June 3; hook event-name casing remains undocumented in primary sources). Shipping it today would produce the same patch-release pattern that hit the Cursor adapter at v0.7.0 / v0.7.1.
+
+### New features
+
+- **Codex CLI adapter (F1)** -- new `install-codex` CLI subcommand reads bundled `world_model_server/adapters/codex/{config.toml, hooks_snippet.toml}` and appends them to `~/.codex/config.toml`. Idempotent: the second run refuses to write without `--force`. Supports `--dry-run` to preview, `--config-path` to target a non-default config location. Creates parent directories. New adapter README at `adapters/codex/README.md`.
+
+  Concrete schema details locked down by tests:
+
+  - MCP server name is `world_model` (underscore), not `world-model` (hyphen). Codex's `sanitize_responses_api_tool_name` in `codex-rs/codex-mcp/src/mcp/mod.rs` silently strips hyphens before exposing tool names to the model, which would create model-visible name collisions and trigger Codex's hash-suffix disambiguation path.
+  - Hook event names use Codex's exact 10-value enum (PreToolUse, PostToolUse, PreCompact, PostCompact, SessionStart, UserPromptSubmit, SubagentStart, SubagentStop, PermissionRequest, Stop). Anything else is rejected at config load.
+  - Hook output JSON is camelCase only and compliant with Codex's `deny_unknown_fields` Rust schema (`codex-rs/hooks/src/schema.rs`). PR #24962 in v0.136 tightened this further by constraining `hookEventName` to a literal string matching the registered event; the bundled helpers return the correct event name per hook.
+  - MCP server config uses current field names (`default_tools_approval_mode`, `startup_timeout_sec`, `tool_timeout_sec`, `enabled_tools`, `disabled_tools`), not the pre-v0.130 names (`trust`, `timeout`, `includeTools`, `excludeTools`).
+
+- **Dual-shape payload normalization (F2)** -- `world_model_server.inject_helper._normalize_payload` and `world_model_server.hook_helper.classify` accept either Claude Code's payload shape (`event`, `project_dir`) or Codex's shape (`hook_event_name`, `cwd`). Same Python code now drives Claude Code, Cursor, pi, and Codex adapters; the four adapters live in separate config files so there is no cross-talk. Backward compatible: existing Claude Code adapter behavior unchanged.
+
+- **Schema regression tests (F3)** -- 21 new tests in `tests/test_v075_features.py` cover TOML parse validity, valid event-name enum, current-not-deprecated MCP field names, camelCase-not-snake-case hook output, `hookEventName == event` strict matching per PR #24962, install-codex CLI behavior (write / idempotent / dry-run / parent-dir creation), and backward-compat CLI subcommand presence.
+
+### Antigravity adapter -- explicit hold note
+
+This is documented here because skipping a planned adapter is a roadmap signal worth being honest about.
+
+The Antigravity CLI adapter was on the v0.8 roadmap (Gemini CLI sunsets June 18). Deep verification against primary sources surfaced five issues that together exceed the ship-this-week risk threshold:
+
+1. The MCP config path migrated from `~/.gemini/antigravity/mcp_config.json` to `~/.gemini/config/mcp_config.json` in 1.0.3, with documentation still split between blogs citing the old path and the changelog citing the new.
+2. The `url` field for HTTP MCP servers was added on 2026-06-03 in 1.0.5, less than 36 hours before this release date. Anything shipped today will look stale by next week.
+3. The hook JSON event-name casing is undocumented in any primary source. Python SDK uses `PreToolCallDecideHook` style; third-party blogs use `PreToolUse` Claude-style. Google's docs site renders client-side and is not scrapeable.
+4. The compaction context-injection contract -- the load-bearing feature for world-model-mcp -- is undocumented in the SDK README.
+5. The repo has 259 open issues with active regressions (sandbox ignored in headless 1.0.4, broken first-launch OAuth, Windows IDE path mismatch). The team is fixing fundamentals rather than stabilizing APIs.
+
+Target: re-verify around June 25, ship v0.7.6 by July 1 if the API has settled. The Cursor adapter at v0.7.0 needed a same-day patch release for similar reasons; the cost of avoiding that repeat is two weeks of waiting.
+
+### Tools and CLI surface
+
+- 26 MCP tools (unchanged from v0.7.4)
+- 18 CLI subcommands (was 17): added `install-codex`
+
+### Tests
+
+304 passing (was 283): 21 new in `tests/test_v075_features.py`.
+
+### Backward compatibility
+
+- All v0.7.4 MCP tools and CLI subcommands work unchanged.
+- `hook_helper.classify` and `inject_helper.build_injection` accept the previous Claude Code payload shape exactly as before; new Codex shape is additive.
+- No schema migrations.
+- No new required dependencies. The adapter snippet uses `python3` from PATH, same pattern as the other adapters.
+- Cursor / pi adapters unaffected (separate config files, separate server names: `world-model` with hyphen for Cursor/pi; `world_model` with underscore for Codex).
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+python -m world_model_server.cli install-codex   # if you use Codex
+```
+
+Existing Cursor / pi / Claude Code installs do not need any action.
+
+---
+
 ## v0.7.4 (May 2026)
 
 Interop, deployment, benchmark. No new adapters this release -- positioning over distribution surface.

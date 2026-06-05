@@ -659,6 +659,73 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def install_codex_command(args):
+    """Wire world-model-mcp into Codex CLI by appending to ~/.codex/config.toml.
+
+    The bundled adapter files at world_model_server/adapters/codex/
+    define an [mcp_servers.world_model] block plus PreToolUse,
+    PostToolUse, PostCompact, and SessionStart hooks. This command
+    appends both snippets to the user's Codex config in an idempotent
+    way: if a marker indicating world-model-mcp has already been
+    installed is present, the command refuses to write unless --force
+    is passed.
+
+    The Codex MCP server is registered with the underscore name
+    `world_model` to avoid Codex's tool-name hyphen-strip on the model-
+    visible tool surface (see adapters/codex/README.md).
+    """
+    config_path = Path(args.config_path).expanduser().resolve() if args.config_path else (
+        Path.home() / ".codex" / "config.toml"
+    )
+    pkg_root = Path(__file__).parent
+    adapter_src = pkg_root / "adapters" / "codex"
+
+    config_file = adapter_src / "config.toml"
+    hooks_file = adapter_src / "hooks_snippet.toml"
+
+    for src in (config_file, hooks_file):
+        if not src.exists():
+            console.print(f"[red]Missing bundled adapter file: {src}[/red]")
+            sys.exit(1)
+
+    marker = "# world-model-mcp adapter for OpenAI Codex CLI"
+    existing = config_path.read_text() if config_path.exists() else ""
+
+    if marker in existing and not args.force:
+        console.print(
+            f"[yellow]Codex adapter already present in {config_path}[/yellow]\n"
+            "Use --force to re-append (will produce duplicate sections; you "
+            "may want to manually remove the old one first)."
+        )
+        return
+
+    if args.dry_run:
+        console.print(f"[bold]Would append to:[/bold] {config_path}")
+        console.print("\n--- config.toml ---\n")
+        console.print(config_file.read_text())
+        console.print("\n--- hooks_snippet.toml ---\n")
+        console.print(hooks_file.read_text())
+        return
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    if not config_path.exists():
+        config_path.write_text("# Codex CLI configuration\n")
+
+    with config_path.open("a") as f:
+        f.write("\n")
+        f.write(config_file.read_text())
+        f.write("\n")
+        f.write(hooks_file.read_text())
+        f.write("\n")
+
+    console.print("[green]Codex adapter installed[/green]")
+    console.print(f"  Appended {config_file.name} + {hooks_file.name} to {config_path}")
+    console.print(
+        "\nNext: restart `codex` and verify with:\n  codex mcp list\n"
+        "`world_model` should appear in the list."
+    )
+
+
 def install_pi_command(args):
     """Copy the pi adapter (index.ts, package.json) into ./adapters/world-model-pi/.
 
@@ -960,6 +1027,24 @@ def main():
                            help="Explicit target directory (default: <project-dir>/adapters/world-model-pi)")
     pi_parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     pi_parser.set_defaults(func=install_pi_command)
+
+    codex_parser = subparsers.add_parser(
+        "install-codex",
+        help="Wire world-model-mcp into Codex CLI by appending to ~/.codex/config.toml",
+    )
+    codex_parser.add_argument(
+        "--config-path", type=str, default=None,
+        help="Override the Codex config path (default: ~/.codex/config.toml)",
+    )
+    codex_parser.add_argument(
+        "--force", action="store_true",
+        help="Re-append even if the adapter marker is already present",
+    )
+    codex_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print what would be appended without writing",
+    )
+    codex_parser.set_defaults(func=install_codex_command)
 
     audit_parser = subparsers.add_parser(
         "audit-compactions", help="List or export compaction audit entries"

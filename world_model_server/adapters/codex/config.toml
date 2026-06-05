@@ -1,0 +1,37 @@
+# world-model-mcp adapter for OpenAI Codex CLI
+#
+# Append this to your `~/.codex/config.toml` (or merge by hand if you already
+# have an `[mcp_servers]` section).
+#
+# Tested against Codex CLI v0.135+ on macOS / Linux. Windows works but you
+# may need to convert the python3 path; see adapters/codex/README.md.
+#
+# After saving this file, restart `codex` and verify with `codex mcp list` -
+# `world_model` should appear and the agent should be able to call
+# tools like `mcp__world_model__query_fact`.
+
+[mcp_servers.world_model]
+# Use python3 so the binary is found even when the user's shell doesn't
+# have the world-model-mcp install dir on PATH for non-interactive shells.
+command = "python3"
+args = ["-m", "world_model_server.server"]
+
+# Forward WORLD_MODEL_DB_PATH from the parent process if set, else
+# fall back to the project default below.
+env_vars = ["WORLD_MODEL_DB_PATH"]
+env = { "WORLD_MODEL_DB_PATH" = "./.claude/world-model" }
+
+# Use the same approval flow as a built-in tool. Set to "auto" if you trust
+# the server (read-mostly memory; constraint enforcement runs in the hook).
+default_tools_approval_mode = "prompt"
+
+# 10s default for boot is enough on a warm Python install; bump if your
+# project has many large facts to load on first session start.
+startup_timeout_sec = 10.0
+
+# Per-tool call timeout - bump for slow find_contradictions on large graphs.
+tool_timeout_sec = 60.0
+
+# Optional: leave both unset to expose all 26 tools. To restrict the agent's
+# surface, list only the tools you want:
+# enabled_tools = ["query_fact", "validate_change", "get_injection_context"]

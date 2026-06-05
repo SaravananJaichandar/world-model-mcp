@@ -98,9 +98,14 @@ def _load_constraints(db_path: str) -> list:
 
 
 def classify(payload: dict) -> dict:
-    """Classify a tool invocation against learned constraints."""
+    """Classify a tool invocation against learned constraints.
+
+    Accepts payloads from either Claude Code hooks (``project_dir`` key)
+    or Codex CLI hooks (``cwd`` key, no ``project_dir``). The rest of the
+    payload shape is shared between the two.
+    """
     tool_input = payload.get("tool_input", {})
-    project_dir = payload.get("project_dir", ".")
+    project_dir = payload.get("project_dir") or payload.get("cwd") or "."
     hard_threshold = payload.get("hard_threshold", 3)
     defer_threshold = payload.get("defer_threshold", 5)
     supports_defer = bool(payload.get("supports_defer", False))
