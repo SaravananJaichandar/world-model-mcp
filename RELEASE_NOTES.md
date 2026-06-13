@@ -1,5 +1,80 @@
 # World Model MCP - Release Notes
 
+## v0.7.6 (June 2026)
+
+In-agent slash command, terminal status widget, second deferral of Antigravity.
+
+### Headline
+
+v0.7.6 is the conversion-first cut of the v0.7 series. The two features both target the same problem: the value of world-model-mcp was invisible inside the agent harness. The `/world-model` slash command makes the state queryable without leaving the conversation; `world-model status-watch` makes it visible in a side terminal. Both are read-only in this release; write operations land in v0.8 with the schema work.
+
+Antigravity is held for the second consecutive release. The 2026-06-13 re-verification against `google-antigravity/antigravity-sdk-python` HEAD surfaced an architectural gap that a release-cadence wait will not close: `OnCompactionHook` is declared as an `InspectHook` (read-only, non-blocking), and the SDK has no `TransformCompactionHook` subclass. The load-bearing memory-injection contract that the adapter needs simply does not exist in the SDK today. Targeting 2026-06-27 for the next re-verification.
+
+### New features
+
+- **`/world-model` slash command (F1)** -- new `world_model_server/slash_command.py` module plus a wire-up in `world_model_server/inject_helper.build_injection`. When the user types `/world-model <subcommand>` inside any harness (Claude Code, Cursor, Codex, pi), the existing UserPromptSubmit hook intercepts the prompt before the search-hint flow, calls into `handle_slash_command`, and returns the formatted output as `additionalContext` in the strict camelCase `hookSpecificOutput` shape. Subcommands shipped: `status` (compact summary of constraints, contradictions, facts), `contradictions` (top 10 unresolved), `recent` (last 10 facts), `help` (subcommand list). Unrecognized subcommands fall through to `help` rather than erroring inside the agent session. Schema-strictness regression-tested against Codex's `deny_unknown_fields` constraint (`hookEventName` literal-matches `UserPromptSubmit`).
+
+- **`world-model status-watch` TUI widget (F2)** -- new `world_model_server/status_widget.py` module plus a `status-watch` CLI subcommand. Terminal pane that runs alongside the agent, refreshes every 5 seconds by default (`--interval N`), and shows constraint counts (total, severity=error, severity=warning), unresolved contradiction count, fact counts by status (canonical / synthesized / superseded), and last compaction time from the audit log. Built on `rich.live` + `rich.panel`. Falls back to plain-text dump when `rich` is not installed (which it always is as a transitive dependency, but the fail-open path is regression tested anyway).
+
+- **Updated v0.8 roadmap** -- README roadmap section now reflects shipping reality. Codex adapter moved from "v0.8.0 Next" to "v0.7.5 shipped" (was incorrectly listed as a v0.8 to-do for nine days after the v0.7.5 ship). Slash command + TUI widget moved from "v0.8.0 Next" to "v0.7.6 shipped". v0.8 scope reduced and refocused on the decay + provenance schema work that Patdolitse and ferhimedamine called out in the working group threads, plus the benchmark publication arc (200-pair contradiction expansion to HuggingFace, LoCoMo confidence-on/off comparison, contradiction-recall benchmark methodology).
+
+### Antigravity hold rationale (2026-06-13 re-verification)
+
+The re-verification confirmed the second-consecutive HOLD recommendation. The single determining issue is architectural, not documentation:
+
+```
+# google/antigravity/hooks/hooks.py (HEAD)
+class OnCompactionHook(InspectHook):
+    """Invoked when a context compaction event occurs."""
+    pass
+```
+
+`InspectHook` is defined in the SDK README as read-only and non-blocking: it can observe a compaction event but cannot modify or augment the compacted summary. There is no `TransformCompactionHook` subclass. There is no `additional_context` return field. The hook is observability-only. A memory adapter that re-injects state at the compaction boundary cannot do its core job through this surface.
+
+Secondary findings:
+
+- `mcp_config.json` path is now stable at `~/.gemini/config/mcp_config.json` (PASS, five releases since migration).
+- `hooks.json` event-name vocabulary is still undocumented in any primary Google source the verification could reach (FAIL, identical to the 2026-06-04 finding; SDK class names like `OnCompactionHook` do not match the Claude-style `PreInvocation` / `PostInvocation` names that issue #261 user configs use).
+- Release cadence is roughly one release every 2.5 days (1.0.5 to 1.0.8 in nine days); the 1.0.8 release fixed `/hooks` writing to the wrong directory only 14 hours before the verification.
+- Open issues #368 and #369 (filed 2026-06-12, both open) report `call_mcp_tool` schema serialization bugs that affect any MCP server's tool invocation path, including world-model-mcp.
+
+Re-verification scheduled for 2026-06-27 (14 days after this ship). The recommendation will revert to SHIP only when either (a) the SDK ships a `TransformCompactionHook` or adds an `additional_context` return field to `OnCompactionHook`, or (b) an official `hooks.json` schema lands on antigravity.google/docs/hooks with stable event names.
+
+### Tools and CLI surface
+
+- 26 MCP tools (unchanged)
+- 19 CLI subcommands (was 18): added `status-watch`
+- New module: `world_model_server.slash_command`
+- New module: `world_model_server.status_widget`
+
+### Tests
+
+333 passing (was 304): 29 new in `tests/test_v076_features.py` covering slash command detection (prefix matching, case-insensitivity, default-to-help), subcommand dispatch, output shape (camelCase, Codex deny_unknown_fields compliance), inject_helper wire-up (slash bypasses search-hint flow, Codex payload shape works, non-slash prompts go through the original path), TUI widget (snapshot reading, render across initialized and uninitialized states), CLI subcommand registration, and backward-compat regression (all v0.7.5 subcommands still registered, dual-shape payload normalization still works, PostCompact path unchanged).
+
+### Backward compatibility
+
+- All v0.7.5 MCP tools and CLI subcommands work unchanged.
+- `inject_helper.build_injection` returns the slash command output only when the prompt actually starts with `/world-model`; every other UserPromptSubmit prompt flows through the original v0.7.0 search-hint behavior. Regression-tested.
+- `hook_helper.classify` is unchanged.
+- No schema migrations.
+- No new required dependencies (`rich` was already a transitive dependency).
+- Cursor / pi / Codex / Claude Code adapters unaffected. The slash command intercept runs inside the existing UserPromptSubmit hook surface that every adapter already wires.
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+# No new install step needed; the slash command works in any already-configured project.
+# Optional: try the TUI in a second terminal
+world-model status-watch --project-dir .
+```
+
+### What is next
+
+v0.8 is the schema + benchmark cut. Decay + provenance fields, per-evidence-type TTL, LoCoMo confidence-on/off, 200-pair contradiction expansion on HuggingFace, contradiction-recall benchmark methodology. Targeting end of June for v0.8 ship. Antigravity adapter folds into v0.8 or v0.9 depending on the 2026-06-27 re-verification.
+
+---
+
 ## v0.7.5 (June 2026)
 
 Codex CLI adapter. Antigravity adapter intentionally deferred.

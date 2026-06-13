@@ -175,6 +175,18 @@ def build_injection(payload: dict) -> dict:
     if event not in ("PostCompact", "UserPromptSubmit", "SessionStart"):
         return {}
 
+    # v0.7.6 F1: intercept /world-model slash commands BEFORE the
+    # search-hint flow. The slash command runs purely from local state
+    # and bypasses the constraint/fact load.
+    if event == "UserPromptSubmit" and user_prompt:
+        try:
+            from .slash_command import handle_slash_command
+            slash_out = handle_slash_command(user_prompt, project_dir)
+            if slash_out is not None:
+                return slash_out
+        except Exception as exc:
+            logger.debug("slash command intercept skipped: %s", exc)
+
     db_dir = Path(project_dir) / ".claude" / "world-model"
     if not db_dir.exists():
         return {}

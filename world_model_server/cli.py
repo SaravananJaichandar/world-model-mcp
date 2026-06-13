@@ -893,6 +893,17 @@ def status_command(args):
         console.print("\n[yellow]⚠️  .mcp.json not found[/yellow]")
 
 
+def status_watch_command(args):
+    """Run the v0.7.6 live TUI status widget.
+
+    Reads the project's ``.claude/world-model/`` directory and shows a
+    refreshing panel with constraint counts, contradiction counts, fact
+    counts, and the last compaction time. Stops on Ctrl-C.
+    """
+    from .status_widget import run_watch
+    run_watch(args.project_dir, interval=float(args.interval))
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -1045,6 +1056,20 @@ def main():
         help="Print what would be appended without writing",
     )
     codex_parser.set_defaults(func=install_codex_command)
+
+    status_watch_parser = subparsers.add_parser(
+        "status-watch",
+        help="Live TUI status widget (constraints, contradictions, facts). v0.7.6.",
+    )
+    status_watch_parser.add_argument(
+        "--project-dir", type=str, default=".",
+        help="Project directory (default: current)",
+    )
+    status_watch_parser.add_argument(
+        "--interval", type=float, default=5.0,
+        help="Refresh interval in seconds (default: 5)",
+    )
+    status_watch_parser.set_defaults(func=status_watch_command)
 
     audit_parser = subparsers.add_parser(
         "audit-compactions", help="List or export compaction audit entries"

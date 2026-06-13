@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.7.5** -- 26 MCP tools, 18 CLI subcommands, 304 tests. Adds a Codex CLI adapter (`install-codex` wires world-model-mcp into `~/.codex/config.toml` with PreToolUse / PostCompact / PostToolUse / SessionStart hooks). v0.7.4 added an AGENTS.md constraint reader, a self-hosted Claude Managed Agents deployment guide, and a reproducible contradiction-resolution benchmark (93.5% overall). v0.7.3 added a guided demo, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
+> **Status: v0.7.6** -- 26 MCP tools, 19 CLI subcommands, 333 tests. Adds an in-agent `/world-model` slash command (UserPromptSubmit hook intercept across Claude Code, Cursor, Codex, pi) with read-only subcommands `status`, `contradictions`, `recent`, `help`, plus a `world-model status-watch` terminal status widget. v0.7.5 added the Codex CLI adapter (`install-codex`). v0.7.4 added an AGENTS.md constraint reader and a reproducible contradiction-resolution benchmark (93.5% overall). v0.7.3 added a guided demo, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,12 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.7.6
+
+- **In-agent `/world-model` slash command** -- typed by the user inside the agent harness, surfaces the world model state without leaving the chat. Read-only in v0.7.6 (`status`, `contradictions`, `recent`, `help`); write operations (`resolve`, `forget`) land in v0.8. Works across Claude Code, Cursor, Codex, and pi by intercepting `UserPromptSubmit` in the existing `inject_helper`. Returns `additionalContext` in the strict camelCase shape Codex enforces (`deny_unknown_fields`), so the same wire-up serves all four harnesses without a per-harness branch.
+- **`world-model status-watch` TUI widget** -- terminal pane that runs alongside the agent and refreshes every 5 seconds. Shows constraints (total, severity=error, severity=warning), unresolved contradictions, facts (canonical / synthesized / superseded), and last compaction time. Built on the `rich` library already in the dependency tree; falls back to a plain-text one-shot dump when `rich` is not installed.
+- **Antigravity CLI adapter intentionally NOT shipped in this release** -- the re-verification on 2026-06-13 against `google-antigravity/antigravity-sdk-python` HEAD surfaced an architectural gap: `OnCompactionHook` is declared as an `InspectHook` (read-only, non-blocking) with no `additional_context` return field and no `TransformCompactionHook` subclass. The load-bearing memory-injection contract does not exist in the SDK today. Targeting 2026-06-27 for the next re-verification; v0.7.6 ships without Antigravity rather than against a contract that cannot do the work.
 
 ## What's new in v0.7.5
 
@@ -542,13 +548,20 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] Reproducible contradiction-resolution benchmark (24-pair dataset, CI workflow, RESULTS.md)
 - [x] 26 MCP tools, 17 CLI subcommands, 283 tests
 
+### v0.7.5
+- [x] Codex CLI adapter (`install-codex`, shipped 2026-06-05)
+
+### v0.7.6
+- [x] In-agent `/world-model` slash command (read-only: status, contradictions, recent, help)
+- [x] `world-model status-watch` TUI status widget
+
 ### v0.8.0 (Next)
-- [ ] Codex CLI adapter (OpenAI; v0.133.0 shipped SubagentStart/SubagentStop hooks May 21)
-- [ ] Antigravity CLI adapter (Google; Gemini CLI sunsets June 18, 2026)
-- [ ] MCP spec 2026-07-28 readiness (stateless transport, `_meta` headers, `InputRequiredResult`)
-- [ ] In-agent `/world-model` slash command + TUI status widget (replaces standalone dashboard)
-- [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86)
-- [ ] Evidence-weighted decay: constraints persist, low-evidence assertions expire
+- [ ] Decay + provenance schema: `source_tool`, `confirmer` fields; per-evidence-type TTL with domain-aware half-lives (`source_code: 365d`, `test: 180d`, `session: 14d`, `user_correction: 730d`, `bug_fix: 365d`). Honors the public commitment to Patdolitse on anthropics/claude-code#47023 and openai/codex#19195.
+- [ ] LoCoMo benchmark run with confidence-on / confidence-off comparison; expanded 200-pair contradiction-resolution benchmark published on HuggingFace; new contradiction-recall benchmark methodology.
+- [ ] Slash command write operations (`/world-model resolve <id>`, `/world-model forget <id>`).
+- [ ] Antigravity CLI adapter (held; SDK currently lacks a TransformCompactionHook for the load-bearing memory-injection contract; re-verify 2026-06-27).
+- [ ] MCP spec 2026-07-28 readiness (stateless transport, `_meta` headers, `InputRequiredResult`).
+- [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
 
 ---
 
