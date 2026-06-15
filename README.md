@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.7.6** -- 26 MCP tools, 19 CLI subcommands, 333 tests. Adds an in-agent `/world-model` slash command (UserPromptSubmit hook intercept across Claude Code, Cursor, Codex, pi) with read-only subcommands `status`, `contradictions`, `recent`, `help`, plus a `world-model status-watch` terminal status widget. v0.7.5 added the Codex CLI adapter (`install-codex`). v0.7.4 added an AGENTS.md constraint reader and a reproducible contradiction-resolution benchmark (93.5% overall). v0.7.3 added a guided demo, opt-in telemetry, and a pi-package adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. v0.7.2 added streamable HTTP transport for remote / MCP-tunnel deployment. Contributions welcome.
+> **Status: v0.8.0** -- 26 MCP tools, 19 CLI subcommands, 375 tests. Adds domain-aware confidence decay with per-evidence-type TTL (source_code 365d, test 180d, session 14d, user_correction 730d, bug_fix 365d), per-item provenance fields `source_tool` and `confirmer` on facts (honors the working group spec sketch on anthropics/claude-code#47023), slash command write operations `/world-model resolve <id>` and `/world-model forget <id>`, and a `confirmer` parameter on `resolve_contradiction` that stamps the winning fact as settled. Antigravity adapter held for the third consecutive release pending a `TransformCompactionHook` in the SDK; next re-verify 2026-06-27. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,18 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.8.0
+
+- **Domain-aware confidence decay** -- new `world_model_server/decay.py` module with exponential half-life decay per `evidence_type`. Half-lives: source_code 365d, test 180d, session 14d, user_correction 730d, bug_fix 365d. Decay applies on read (no background task), so the next `query_fact` call returns the time-corrected confidence. Settled facts (`canonical` status, or any fact with `confirmer != NULL`) never auto-transition. Synthesized facts that decay below 0.2 confidence and corroborated facts that decay below 0.1 confidence auto-supersede on read, surfacing rot to the next compaction injection.
+
+- **Per-item provenance fields on facts** -- three additive columns (`source_tool TEXT`, `confirmer TEXT`, `last_decay_at TIMESTAMP`), all NULL-defaulted, no backfill. `source_tool` records which tool wrote the fact (e.g. `claude_code`, `codex`, `cursor`, `pi`, `user`). `confirmer` records who confirmed it, distinct from the asserter; NULL means pending, non-NULL means settled. Both are exposed on the `Fact` model and propagated through `create_fact`. Honors the public commitment to Patdolitse (anthropics/claude-code#47023) and ferhimedamine (openai/codex#19195).
+
+- **Slash command write operations** -- two new subcommands. `/world-model resolve <id>` marks a contradiction as resolved (manual; for confidence-weighted picking use the `resolve_contradiction` MCP tool). `/world-model forget <id>` sets `invalid_at` on a fact (preserved in the audit log; current-only reads skip it from then on). Both are idempotent and report cleanly on unknown ids. Help text now lists both alongside the read-only subcommands shipped in v0.7.6.
+
+- **`resolve_contradiction` accepts `confirmer`** -- when a `confirmer` argument is provided to the MCP tool or its underlying `resolve` function, the winning fact gets its `confirmer` column stamped with that value. This is the spec primitive that distinguishes "the asserter says X" from "X is confirmed by Y" per the working group sketch.
+
+- **Antigravity adapter held for the third consecutive release.** The 2026-06-13 re-verification found `OnCompactionHook` declared as `InspectHook` in the SDK with no `TransformCompactionHook` and no `additional_context` return field. The load-bearing memory-injection contract still does not exist in the SDK. Next re-verify 2026-06-27.
 
 ## What's new in v0.7.6
 
@@ -555,11 +567,16 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] In-agent `/world-model` slash command (read-only: status, contradictions, recent, help)
 - [x] `world-model status-watch` TUI status widget
 
-### v0.8.0 (Next)
-- [ ] Decay + provenance schema: `source_tool`, `confirmer` fields; per-evidence-type TTL with domain-aware half-lives (`source_code: 365d`, `test: 180d`, `session: 14d`, `user_correction: 730d`, `bug_fix: 365d`). Honors the public commitment to Patdolitse on anthropics/claude-code#47023 and openai/codex#19195.
-- [ ] LoCoMo benchmark run with confidence-on / confidence-off comparison; expanded 200-pair contradiction-resolution benchmark published on HuggingFace; new contradiction-recall benchmark methodology.
-- [ ] Slash command write operations (`/world-model resolve <id>`, `/world-model forget <id>`).
-- [ ] Antigravity CLI adapter (held; SDK currently lacks a TransformCompactionHook for the load-bearing memory-injection contract; re-verify 2026-06-27).
+### v0.8.0
+- [x] Decay + provenance schema: `source_tool`, `confirmer`, `last_decay_at` columns on facts. Per-evidence-type TTL with domain-aware half-lives (source_code 365d, test 180d, session 14d, user_correction 730d, bug_fix 365d).
+- [x] Slash command write operations (`/world-model resolve <id>`, `/world-model forget <id>`).
+- [x] `resolve_contradiction` accepts `confirmer` to stamp the winning fact as settled.
+
+### v0.8.1 (Next)
+- [ ] LoCoMo benchmark run with confidence-on / confidence-off comparison.
+- [ ] Expanded 200-pair contradiction-resolution benchmark published on HuggingFace (was 24 pairs in v0.7.4).
+- [ ] New contradiction-recall benchmark methodology testing what the v0.8.0 schema enables.
+- [ ] Antigravity CLI adapter (held since 2026-06-13; SDK lacks a `TransformCompactionHook` for the load-bearing memory-injection contract; re-verify 2026-06-27).
 - [ ] MCP spec 2026-07-28 readiness (stateless transport, `_meta` headers, `InputRequiredResult`).
 - [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
 

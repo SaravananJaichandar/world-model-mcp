@@ -133,6 +133,28 @@ class KnowledgeGraph:
                 await db.execute(
                     "ALTER TABLE facts ADD COLUMN last_confirmed_at TIMESTAMP"
                 )
+            # v0.8.0: provenance + decay fields. All NULL-defaulted; no
+            # backfill. Behavior on rows with NULL values is identical to
+            # v0.7 (see world_model_server/decay.py for the on-read decay
+            # function and the spec sketch on anthropics/claude-code#47023).
+            if "source_tool" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN source_tool TEXT"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_source_tool ON facts(source_tool)"
+                )
+            if "confirmer" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN confirmer TEXT"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_confirmer ON facts(confirmer)"
+                )
+            if "last_decay_at" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN last_decay_at TIMESTAMP"
+                )
             # Always backfill any NULL content_hash rows (covers post-migration inserts too)
             cursor = await db.execute(
                 "SELECT id, fact_text, evidence_path FROM facts WHERE content_hash IS NULL"
@@ -571,8 +593,8 @@ class KnowledgeGraph:
                 INSERT INTO facts
                 (id, fact_text, valid_at, invalid_at, status, entity_ids, evidence_type,
                  evidence_path, derived_from, confidence, session_id, created_at,
-                 source_count, last_confirmed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_count, last_confirmed_at, source_tool, confirmer)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     fact.id,
@@ -589,6 +611,8 @@ class KnowledgeGraph:
                     fact.created_at.isoformat(),
                     fact.source_count,
                     fact.last_confirmed_at.isoformat() if fact.last_confirmed_at else None,
+                    fact.source_tool,
+                    fact.confirmer,
                 ),
             )
             await db.commit()
@@ -636,27 +660,46 @@ class KnowledgeGraph:
             cursor = await db.execute(sql_query, params)
             rows = await cursor.fetchall()
 
-            facts = [
-                Fact(
-                    id=row["id"],
-                    fact_text=row["fact_text"],
-                    valid_at=datetime.fromisoformat(row["valid_at"]),
-                    invalid_at=(
-                        datetime.fromisoformat(row["invalid_at"]) if row["invalid_at"] else None
-                    ),
-                    status=row["status"],
-                    entity_ids=json.loads(row["entity_ids"]) if row["entity_ids"] else [],
-                    evidence_type=row["evidence_type"],
-                    evidence_path=row["evidence_path"],
-                    derived_from=(
-                        json.loads(row["derived_from"]) if row["derived_from"] else None
-                    ),
-                    confidence=row["confidence"],
-                    session_id=row["session_id"],
-                    created_at=datetime.fromisoformat(row["created_at"]),
+            # v0.8.0 F1: apply domain-aware decay on read. Pure
+            # computation, no DB writes here; row-level last_decay_at
+            # update happens lazily when a fact is materially read by
+            # downstream code (e.g. resolve_contradiction).
+            from .decay import apply_decay_to_row
+
+            facts = []
+            for row in rows:
+                row_dict = dict(row) if not isinstance(row, dict) else row
+                decayed = apply_decay_to_row(row_dict)
+                facts.append(
+                    Fact(
+                        id=decayed["id"],
+                        fact_text=decayed["fact_text"],
+                        valid_at=datetime.fromisoformat(decayed["valid_at"]),
+                        invalid_at=(
+                            datetime.fromisoformat(decayed["invalid_at"])
+                            if decayed["invalid_at"]
+                            else None
+                        ),
+                        status=decayed["status"],
+                        entity_ids=(
+                            json.loads(decayed["entity_ids"])
+                            if decayed["entity_ids"]
+                            else []
+                        ),
+                        evidence_type=decayed["evidence_type"],
+                        evidence_path=decayed["evidence_path"],
+                        derived_from=(
+                            json.loads(decayed["derived_from"])
+                            if decayed["derived_from"]
+                            else None
+                        ),
+                        confidence=decayed["confidence"],
+                        session_id=decayed["session_id"],
+                        created_at=datetime.fromisoformat(decayed["created_at"]),
+                        source_tool=decayed.get("source_tool"),
+                        confirmer=decayed.get("confirmer"),
+                    )
                 )
-                for row in rows
-            ]
 
             # Calculate overall confidence
             if facts:

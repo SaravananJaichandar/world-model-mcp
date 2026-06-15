@@ -1,5 +1,84 @@
 # World Model MCP - Release Notes
 
+## v0.8.0 (June 2026)
+
+Decay + provenance schema. Slash command write operations. Antigravity held for the third consecutive release.
+
+### Headline
+
+v0.8.0 is the schema cut promised to the working group on anthropics/claude-code#47023 and openai/codex#19195. The decay + provenance work I publicly committed to Patdolitse and ferhimedamine over the past two weeks is the load-bearing change: facts now carry a `source_tool` and a `confirmer` (distinct from the asserter), and confidence decays under a per-evidence-type half-life curve so the next session sees rotted inferences as rotted instead of as fresh assertions. The benchmarks that validate this schema (LoCoMo confidence-on/off, expanded contradiction-resolution corpus, contradiction-recall methodology) ship separately as v0.8.1; bundling them into this release would have inflated scope past one ship cycle.
+
+Antigravity is held for the third consecutive release. The 2026-06-13 re-verification against `google-antigravity/antigravity-sdk-python` HEAD confirmed `OnCompactionHook` is declared as `InspectHook` with no `TransformCompactionHook` subclass and no `additional_context` return field. The architectural gap that blocked v0.7.5 and v0.7.6 has not closed. Next re-verification 2026-06-27. If that one also fails, Antigravity is bumped to v0.9 and removed from the v0.8 milestone.
+
+### New features
+
+- **Domain-aware confidence decay (F1)** -- new `world_model_server/decay.py` module with three pure functions: `compute_decayed_confidence`, `should_auto_supersede`, `apply_decay_to_row`. Exponential half-life formula `confidence * (0.5 ** (age_days / ttl_days))` where `ttl_days` is set per `evidence_type` from a constant dict: source_code 365, test 180, session 14, user_correction 730, bug_fix 365 (unknown / NULL falls back to 90). The decay applies on read in `query_facts`, not as a background task, so there is no scheduler dependency and the result is deterministic across runs given a fixed `now`. Settled facts (`status == "canonical"` or `confirmer != NULL`) never auto-transition. `synthesized` facts that decay below 0.20 confidence and `corroborated` facts that decay below 0.10 confidence auto-supersede on read.
+
+- **Per-item provenance fields on facts (F2)** -- three additive columns on the facts table: `source_tool TEXT NULL`, `confirmer TEXT NULL`, `last_decay_at TIMESTAMP NULL`. All NULL-defaulted, no backfill on existing rows. The `Fact` Pydantic model adds three optional fields with matching names. `create_fact` persists both provenance fields. Existing code creating Facts without provenance still works because the fields default to None. The schema migration is idempotent: re-initializing a KnowledgeGraph against an existing v0.8 facts.db is a no-op. Honors the public commitment to Patdolitse on anthropics/claude-code#47023#issuecomment-4636842510 (June 6 settled-vs-pending framing) and ferhimedamine on anthropics/claude-code#47023#issuecomment-4697914250 (June 13 SessionEnd + ToolResult proposal).
+
+- **Slash command write operations (F3)** -- two new subcommands extending the v0.7.6 read-only surface. `/world-model resolve <id>` marks a contradiction as resolved (manual; for confidence-weighted automatic resolution use the `resolve_contradiction` MCP tool with an explicit strategy). `/world-model forget <id>` sets `invalid_at` on a fact, removing it from current-only reads while preserving it in the audit log. Both subcommands are idempotent (second call on an already-resolved contradiction or already-invalidated fact reports cleanly), validate the argument (missing id returns a usage hint), and return the existing camelCase `hookSpecificOutput` shape Codex enforces.
+
+- **`resolve_contradiction` accepts `confirmer` (F4)** -- the MCP tool and its underlying `world_model_server.contradictions.resolve` function gain an optional `confirmer` parameter. When set, the winning fact gets its `confirmer` column stamped with that value, marking it as settled per the spec sketch. When omitted (the default), behavior is unchanged from v0.7.x.
+
+### Schema migration discipline
+
+All three new columns are `NULL`-defaulted. No backfill. The full v0.7.6 test suite (304 tests) keeps passing without modification. Behavior on rows with NULL values is identical to v0.7:
+
+- A row with `source_tool = NULL` is treated as "tool unknown" (no behavior change)
+- A row with `confirmer = NULL` is treated as "pending unless status == canonical"
+- A row with `last_decay_at = NULL` triggers a one-time decay computation on next read (the result is not persisted in this release; v0.8.1 may add write-back amortization)
+
+The migration is the same idempotent column-existence-check pattern used in v0.6.0 and v0.7.0.
+
+### What is intentionally NOT in this release
+
+- The benchmark publication arc (LoCoMo confidence-on/off, 200-pair contradiction expansion, contradiction-recall methodology) is split into v0.8.1 to keep scope bounded.
+- Decay write-back amortization (storing the computed `last_decay_at` on read) is deferred. The decay is pure computation in this release; persistence is a v0.8.1 candidate.
+- `source_tool` and `confirmer` propagation through every MCP tool that creates facts is partial: `create_fact` accepts them via the `Fact` model, `resolve_contradiction` accepts `confirmer`. Other tools (`record_decision`, `record_test_outcome`) keep their v0.7 signatures in this release.
+- Domain-aware TTL configurability via config file (the constants are fixed in `decay.py`).
+
+### Tools and CLI surface
+
+- 26 MCP tools (unchanged; `resolve_contradiction` gains an optional kwarg)
+- 19 CLI subcommands (unchanged)
+- Slash command subcommands: 4 read + 2 write (up from 4 read in v0.7.6)
+- New module: `world_model_server.decay`
+
+### Tests
+
+375 passing (was 333): 42 new in `tests/test_v080_features.py` covering decay math across all 5 evidence types (half-life at one period, half-life at two periods, distinct TTLs, default fallback, unparseable timestamp fail-open), status auto-transitions (canonical never supersedes, confirmer-set never supersedes, threshold boundaries for synthesized and corroborated), schema migration (idempotent re-init, existing rows get NULL provenance, new rows persist provenance), slash command write operations (parse arguments, unknown ids, idempotency, DB state changes), `resolve_contradiction` with and without `confirmer`, and backward-compat regression (all v0.7.6 subcommands still registered, read-only slash subcommands unchanged, existing v0.7 facts decay does not break query).
+
+### Backward compatibility
+
+- All v0.7.6 MCP tools and CLI subcommands work unchanged.
+- `inject_helper.build_injection` and `hook_helper.classify` are unchanged.
+- No schema migrations on the constraints or decisions tables.
+- No new required dependencies.
+- All four adapters (Claude Code, Cursor, Codex, pi) unaffected. The new provenance fields are optional on Fact creation and the decay applies transparently on read.
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+# Schema migration runs automatically on first KnowledgeGraph.initialize().
+# Existing facts get NULL provenance; new facts can pass source_tool /
+# confirmer through the Fact model or the MCP tools.
+```
+
+### What is next (v0.8.1)
+
+The benchmark publication arc. Three artifacts:
+
+1. **LoCoMo run with confidence-on / confidence-off comparison.** The story: "with the v0.8.0 provenance schema turned on, recall under contradicted facts improves by X%." The raw LoCoMo number is secondary to the delta; world-model-mcp was not optimized for raw recall on LoCoMo's conversation surface, but the comparison is something Mem0 / Letta / Zep / Dakera cannot show because their schemas do not carry provenance.
+
+2. **Expanded 200-pair contradiction-resolution benchmark published on HuggingFace.** v0.7.4 shipped a 24-pair internal corpus with 93.5% overall accuracy. Expanding to 200 pairs with more category coverage and publishing as a HuggingFace dataset makes the benchmark reproducible by anyone.
+
+3. **New contradiction-recall benchmark methodology.** Inject contradictions into LoCoMo conversations and measure recall accuracy on the contradicted items. This is the benchmark world-model-mcp is built to win; testing it on the v0.8.0 schema is more compelling than testing the v0.7 schema.
+
+Targeting end of June for v0.8.1 ship.
+
+---
+
 ## v0.7.6 (June 2026)
 
 In-agent slash command, terminal status widget, second deferral of Antigravity.

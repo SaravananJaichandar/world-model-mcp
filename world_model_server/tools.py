@@ -914,11 +914,18 @@ class WorldModelTools:
         fact_b_id: str,
         strategy: str = "auto",
         notes: Optional[str] = None,
+        confirmer: Optional[str] = None,
     ) -> str:
-        """Pick a winner between two contradicting facts and mark the loser superseded."""
+        """Pick a winner between two contradicting facts and mark the loser superseded.
+
+        v0.8.0: when ``confirmer`` is set, the winning fact gets stamped
+        with that identity, marking it as settled per the working group
+        spec sketch on anthropics/claude-code#47023.
+        """
         from .contradictions import resolve
         result = await resolve(
-            self.kg, fact_a_id, fact_b_id, strategy=strategy, notes=notes
+            self.kg, fact_a_id, fact_b_id,
+            strategy=strategy, notes=notes, confirmer=confirmer,
         )
         return result.model_dump_json()
 

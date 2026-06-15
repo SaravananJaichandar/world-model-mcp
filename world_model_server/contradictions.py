@@ -84,11 +84,19 @@ async def resolve(
     fact_b_id: str,
     strategy: str = "auto",
     notes: Optional[str] = None,
+    confirmer: Optional[str] = None,
 ) -> ContradictionResolution:
     """Resolve a contradiction by superseding the loser.
 
     strategy="auto" picks one via suggest_strategy based on the actual fact rows.
     Returns a ContradictionResolution record with winner/loser ids.
+
+    v0.8.0: when ``confirmer`` is set, the winning fact gets its
+    ``confirmer`` column stamped with that value, moving the fact from
+    pending to settled per the spec sketch on
+    anthropics/claude-code#47023. The confirmer is the identity of who
+    closed the loop (typically ``"user"`` or another tool that
+    corroborated the winning fact externally).
     """
     fact_a = await kg.get_fact_by_id(fact_a_id)
     fact_b = await kg.get_fact_by_id(fact_b_id)
@@ -125,6 +133,17 @@ async def resolve(
     loser_id = fact_b_id if winner == "a" else fact_a_id
 
     await kg.supersede_fact(loser_id, reason=f"superseded by {winner_id} via {strategy}")
+
+    # v0.8.0: stamp confirmer on the winning fact if provided. This
+    # marks the fact as settled per the working group spec sketch.
+    if confirmer:
+        import aiosqlite
+        async with aiosqlite.connect(kg.facts_db) as db:
+            await db.execute(
+                "UPDATE facts SET confirmer = ? WHERE id = ?",
+                (confirmer, winner_id),
+            )
+            await db.commit()
 
     return ContradictionResolution(
         fact_a_id=fact_a_id,

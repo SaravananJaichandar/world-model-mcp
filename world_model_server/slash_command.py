@@ -26,7 +26,16 @@ from typing import Optional
 
 SLASH_PREFIX = "/world-model"
 
-SUBCOMMANDS = ("status", "contradictions", "recent", "help")
+# Read-only subcommands shipped in v0.7.6.
+READ_SUBCOMMANDS = ("status", "contradictions", "recent", "help")
+
+# Write subcommands shipped in v0.8.0. They take a single argument: the
+# id of the contradiction or fact to act on. resolve marks a
+# contradiction as resolved; forget marks a fact as invalid (does not
+# physically delete; the row stays in the audit log).
+WRITE_SUBCOMMANDS = ("resolve", "forget")
+
+SUBCOMMANDS = READ_SUBCOMMANDS + WRITE_SUBCOMMANDS
 
 
 def is_slash_command(user_prompt: str) -> bool:
@@ -61,6 +70,21 @@ def parse_subcommand(user_prompt: str) -> str:
     if first not in SUBCOMMANDS:
         return "help"
     return first
+
+
+def parse_argument(user_prompt: str) -> Optional[str]:
+    """Return the argument after the subcommand, or None if absent.
+
+    Used by write subcommands (resolve / forget) that take a single id
+    argument: ``/world-model resolve ct123`` returns ``"ct123"``.
+    """
+    stripped = user_prompt.strip()
+    rest = stripped[len(SLASH_PREFIX):].strip()
+    parts = rest.split(maxsplit=1)
+    if len(parts) < 2:
+        return None
+    arg = parts[1].strip()
+    return arg if arg else None
 
 
 def _open_constraints_db(db_dir: Path) -> Optional[sqlite3.Connection]:
@@ -241,17 +265,155 @@ def _format_recent(db_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def _resolve_contradiction(db_dir: Path, contradiction_id: str) -> str:
+    """Mark a contradiction as resolved by id. Returns a human-readable
+    status block formatted for re-injection into the agent context.
+
+    Resolution does not pick a winner automatically; that requires the
+    ``resolve_contradiction`` MCP tool with an explicit strategy. The
+    slash command writes a manual-resolution row and surfaces the
+    contradiction id for follow-up.
+    """
+    if not contradiction_id:
+        return (
+            "# world-model resolve\n\n"
+            "Missing contradiction id. Usage: "
+            "`/world-model resolve <id>`. Run `/world-model contradictions` "
+            "to see ids."
+        )
+    conn = _open_facts_db(db_dir)
+    if conn is None:
+        return (
+            "# world-model resolve\n\n"
+            "Facts database not found. Run `world-model setup` first."
+        )
+    try:
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='contradictions'"
+        )
+        if cur.fetchone() is None:
+            return (
+                "# world-model resolve\n\n"
+                "No contradictions table exists yet."
+            )
+        cur = conn.execute(
+            "SELECT id, fact_a, fact_b, status FROM contradictions WHERE id = ?",
+            (contradiction_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return (
+                f"# world-model resolve\n\n"
+                f"No contradiction found with id `{contradiction_id}`."
+            )
+        if row["status"] == "resolved":
+            return (
+                f"# world-model resolve\n\n"
+                f"Contradiction `{contradiction_id}` is already resolved."
+            )
+        conn.execute(
+            "UPDATE contradictions SET status = 'resolved' WHERE id = ?",
+            (contradiction_id,),
+        )
+        conn.commit()
+        return (
+            f"# world-model resolve\n\n"
+            f"Contradiction `{contradiction_id}` marked resolved.\n"
+            f"- A: {row['fact_a']}\n"
+            f"- B: {row['fact_b']}\n\n"
+            f"For confidence-weighted automatic resolution that picks a "
+            f"winner, use the `resolve_contradiction` MCP tool with an "
+            f"explicit strategy."
+        )
+    except sqlite3.Error as exc:
+        return (
+            f"# world-model resolve\n\n"
+            f"Database error: {exc}."
+        )
+    finally:
+        conn.close()
+
+
+def _forget_fact(db_dir: Path, fact_id: str) -> str:
+    """Mark a fact as invalid by id. Returns a status block.
+
+    Does not physically delete the row; sets ``invalid_at`` to now so the
+    fact stops surfacing in current-only reads but stays in the audit
+    log. The MCP ``query_fact`` tool ``current_only=True`` default
+    already filters these out.
+    """
+    if not fact_id:
+        return (
+            "# world-model forget\n\n"
+            "Missing fact id. Usage: "
+            "`/world-model forget <id>`. Run `/world-model recent` to see ids."
+        )
+    conn = _open_facts_db(db_dir)
+    if conn is None:
+        return (
+            "# world-model forget\n\n"
+            "Facts database not found. Run `world-model setup` first."
+        )
+    try:
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='facts'"
+        )
+        if cur.fetchone() is None:
+            return (
+                "# world-model forget\n\n"
+                "No facts table exists yet."
+            )
+        cur = conn.execute(
+            "SELECT id, fact_text, invalid_at FROM facts WHERE id = ?",
+            (fact_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return (
+                f"# world-model forget\n\n"
+                f"No fact found with id `{fact_id}`."
+            )
+        if row["invalid_at"] is not None:
+            return (
+                f"# world-model forget\n\n"
+                f"Fact `{fact_id}` is already invalidated."
+            )
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        conn.execute(
+            "UPDATE facts SET invalid_at = ? WHERE id = ?",
+            (now, fact_id),
+        )
+        conn.commit()
+        return (
+            f"# world-model forget\n\n"
+            f"Fact `{fact_id}` marked invalid.\n"
+            f"- {row['fact_text']}\n\n"
+            f"The row is preserved in the audit log; only current-only "
+            f"reads will skip it from now on."
+        )
+    except sqlite3.Error as exc:
+        return (
+            f"# world-model forget\n\n"
+            f"Database error: {exc}."
+        )
+    finally:
+        conn.close()
+
+
 def _format_help() -> str:
     return (
         "# world-model slash commands\n"
         "\n"
+        "Read operations:\n"
         "- `/world-model status`         summary of constraints, contradictions, and facts\n"
         "- `/world-model contradictions` list current unresolved contradictions\n"
         "- `/world-model recent`         last 10 facts in the knowledge graph\n"
         "- `/world-model help`           show this message\n"
         "\n"
-        "All subcommands are read-only in v0.7.6. Write operations "
-        "(resolve, forget) land in v0.8."
+        "Write operations (v0.8.0):\n"
+        "- `/world-model resolve <id>`   mark a contradiction as resolved\n"
+        "- `/world-model forget <id>`    mark a fact as invalid (preserved in audit log)"
     )
 
 
@@ -274,6 +436,10 @@ def handle_slash_command(user_prompt: str, project_dir: str) -> Optional[dict]:
         body = _format_contradictions(db_dir)
     elif subcommand == "recent":
         body = _format_recent(db_dir)
+    elif subcommand == "resolve":
+        body = _resolve_contradiction(db_dir, parse_argument(user_prompt) or "")
+    elif subcommand == "forget":
+        body = _forget_fact(db_dir, parse_argument(user_prompt) or "")
     else:
         body = _format_help()
 

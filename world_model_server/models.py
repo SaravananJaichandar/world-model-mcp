@@ -76,6 +76,28 @@ class Fact(BaseModel):
     last_confirmed_at: Optional[datetime] = Field(
         None, description="When this fact was most recently re-observed"
     )
+    # v0.8.0 provenance fields. See anthropics/claude-code#47023.
+    source_tool: Optional[str] = Field(
+        None,
+        description=(
+            "Which tool wrote this fact (e.g. 'claude_code', 'codex', "
+            "'cursor', 'pi', 'user'). NULL = unknown / legacy row."
+        ),
+    )
+    confirmer: Optional[str] = Field(
+        None,
+        description=(
+            "Who confirmed this fact, distinct from the asserter. NULL = "
+            "pending (asserted but not confirmed); non-NULL = settled."
+        ),
+    )
+    last_decay_at: Optional[datetime] = Field(
+        None,
+        description=(
+            "When confidence decay was last applied. NULL = needs decay "
+            "computed on next read."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
@@ -89,6 +111,8 @@ class Fact(BaseModel):
                 "evidence_type": "source_code",
                 "evidence_path": "src/api/auth.ts:42-58",
                 "confidence": 1.0,
+                "source_tool": "codex",
+                "confirmer": "user",
             }
         }
 
