@@ -1,5 +1,80 @@
 # World Model MCP - Release Notes
 
+## v0.8.1 (June 2026)
+
+Contradiction-resolution benchmark expansion. Honest internal schema-correctness check.
+
+### Headline
+
+v0.8.1 is a focused incremental cut: the v0.7.4 24-pair contradiction-resolution benchmark expands to 105 hand-curated pairs across 19 categories, including 6 new categories that exercise the v0.8.0 schema specifically. The runner stays deterministic; results are reproducible bit-for-bit. The numbers are intentionally framed as internal schema-correctness validation, not as a category benchmark or wedge proof — the wedge benchmark (repeat-mistake rate on AI coding tasks) is in v0.9 design and is what the published essay framing primes for.
+
+### What is new
+
+- **Expanded contradiction-resolution benchmark (F1)** -- new `benchmarks/contradictions-200/` directory with three files:
+  - `dataset.jsonl`: 105 pairs across 19 categories. The 13 v0.7.4 categories are preserved (with 4-10 pairs each, up from 1-3); 6 new categories test the v0.8.0 schema.
+  - `run.py`: deterministic runner. Scores 5 strategies (4 v0.7 canonical + 1 new v0.8 decay-aware) per pair. The decay-aware strategy is scored only on pairs where evidence_type is present, because without it the function returns input confidence unchanged and the strategy degenerates into keep_higher_confidence; counting those degenerate wins would inflate the score.
+  - `RESULTS.md`: full per-strategy + per-category breakdown with honest methodology disclosure.
+
+- **Six new categories that test the v0.8.0 schema**:
+  - `source_tool_corroboration`: distinct source_tool values across rows should count as independent corroboration
+  - `confirmer_overrides_pending`: a settled fact (confirmer != NULL) should beat a higher-confidence pending fact under auto
+  - `decay_advantage_session_vs_source`: same age, same confidence; the difference is evidence_type. With decay on, source_code beats session because session decays 26x faster
+  - `decay_advantage_stale_session`: a younger session fact loses to an older bug_fix fact because the session has decayed below
+  - `evidence_type_user_correction`: user_correction beats session even when older because the half-life is 52x longer
+  - `settled_beats_higher_confidence`: a fact with confirmer="user" beats a higher-confidence pending fact
+
+### Results
+
+```
+Per-strategy accuracy on the 105-pair dataset:
+  keep_higher_confidence              85/105  (81.0%)
+  keep_most_recent                    56/105  (53.3%)
+  keep_most_sources                  104/105  (99.0%)
+  auto                                81/105  (77.1%)
+  keep_higher_confidence_decayed      19/ 21  (90.5%) [skipped 84]
+
+Overall: 345/441 (78.2%)
+```
+
+The numbers are LOWER than the v0.7.4 93.5% headline. This is intentional and is by design of the new categories: the v0.7.4 dataset tested raw confidence ranking; the v0.8.1 dataset tests schema awareness (confirmer, evidence_type, decay). The auto strategy in particular fails on the new categories because it does not yet know about confirmer or evidence_type — that rewrite is in v0.9 scope.
+
+### What is not in this release
+
+- The repeat-mistake benchmark on AI coding tasks. That is v0.9 and is the wedge proof the published essay primes for. It needs careful methodology design grounded in primary sources (SWE-bench Verified subset selection, mistake-pattern taxonomy, scoring). Targeting end of June / early July.
+- LoCoMo. The 2026-06-15 deep research and the sanity-slice run on 2026-06-15 surfaced two material problems: judge prompt sensitivity dominates the small-n signal, and LoCoMo's general conversational recall task does not test the world-model-mcp wedge. The harness work that was on the feature branch is preserved in git history (`feature/v0.8.1-benchmarks` branch up to commit `c99a146`) and may be revived if a future release needs general-recall validation, but it does not ship in v0.8.x.
+- Antigravity adapter. Third consecutive release without it. Next re-verify 2026-06-27. If that re-verify also fails the architectural gate (no `TransformCompactionHook`), Antigravity bumps to v0.10 and off the v0.9 milestone.
+
+### Honest framing
+
+The published essay on 2026-06-16 ("Your AI model is temporary. Your learning loop should not be.") set up an expectation: show that the learning loop measurably reduces repeated agent mistakes. This release does not deliver that proof. It delivers an internal correctness check that validates the v0.8.0 schema math, and it names the v0.9 work explicitly so peers reading the README see what is coming.
+
+That is the discipline. Shipping a smaller honest artifact + a credible roadmap is better than shipping a larger marketing-shaped artifact that does not survive peer scrutiny.
+
+### Tools and surface
+
+- 26 MCP tools (unchanged)
+- 19 CLI subcommands (unchanged)
+- 375 tests passing (unchanged from v0.8.0)
+- Benchmarks: `benchmarks/contradictions/` (v0.7.4, 24 pairs, 93.5% headline) + `benchmarks/contradictions-200/` (v0.8.1, 105 pairs, 78.2% overall)
+
+### Backward compatibility
+
+- Zero changes to MCP tools, CLI, schema, or adapters.
+- v0.7.4 benchmark at `benchmarks/contradictions/` is preserved unchanged.
+- 375 v0.8.0 tests still pass.
+- No new required dependencies. The runner is pure stdlib.
+
+### Upgrade path
+
+```bash
+pip install -U world-model-mcp
+python benchmarks/contradictions-200/run.py
+```
+
+The runner prints the per-strategy table and writes `results.json` next to the dataset.
+
+---
+
 ## v0.8.0 (June 2026)
 
 Decay + provenance schema. Slash command write operations. Antigravity held for the third consecutive release.

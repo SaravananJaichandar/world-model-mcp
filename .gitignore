@@ -90,3 +90,11 @@ GITHUB_RELEASE_v*.md
 # overwrites it locally before a release build. Local modifications to that
 # file are ignored at commit time.
 .env.release
+
+# v0.8.1 benchmark sanity-slice outputs (not committed)
+benchmarks/locomo/sanity-*.json
+benchmarks/locomo/sanity-*.jsonl
+benchmarks/locomo/progress.jsonl
+benchmarks/locomo/results.json
+benchmarks/contradictions-200/results.json
+benchmarks/**/__pycache__/

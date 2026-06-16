@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.8.0** -- 26 MCP tools, 19 CLI subcommands, 375 tests. Adds domain-aware confidence decay with per-evidence-type TTL (source_code 365d, test 180d, session 14d, user_correction 730d, bug_fix 365d), per-item provenance fields `source_tool` and `confirmer` on facts (honors the working group spec sketch on anthropics/claude-code#47023), slash command write operations `/world-model resolve <id>` and `/world-model forget <id>`, and a `confirmer` parameter on `resolve_contradiction` that stamps the winning fact as settled. Antigravity adapter held for the third consecutive release pending a `TransformCompactionHook` in the SDK; next re-verify 2026-06-27. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
+> **Status: v0.8.1** -- 26 MCP tools, 19 CLI subcommands, 375 tests, 105-pair contradiction-resolution benchmark. Expands the v0.7.4 24-pair benchmark to 105 pairs across 19 categories, including 6 new categories that exercise the v0.8.0 provenance + decay schema. Internal correctness check, not a category benchmark — the real wedge benchmark (repeat-mistake rate on AI coding tasks) is coming in v0.9. v0.8.0 added domain-aware confidence decay with per-evidence-type TTL, per-item provenance fields `source_tool` and `confirmer`, slash command write operations, and a `confirmer` parameter on `resolve_contradiction`. Antigravity adapter held for the third consecutive release pending a `TransformCompactionHook` in the SDK; next re-verify 2026-06-27. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,14 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.8.1
+
+- **Contradiction-resolution benchmark expansion** -- the v0.7.4 24-pair benchmark grew to 105 hand-curated pairs across 19 categories. Six new categories exercise the v0.8.0 schema specifically: `source_tool_corroboration`, `confirmer_overrides_pending`, `decay_advantage_session_vs_source`, `decay_advantage_stale_session`, `evidence_type_user_correction`, `settled_beats_higher_confidence`. Deterministic runner at [`benchmarks/contradictions-200/run.py`](benchmarks/contradictions-200/run.py); full per-strategy + per-category breakdown at [`benchmarks/contradictions-200/RESULTS.md`](benchmarks/contradictions-200/RESULTS.md).
+
+- **Honest framing on the numbers**: the new dataset is harder than v0.7.4's 24-pair set because the new categories deliberately test schema awareness (confirmer, evidence_type, decay) rather than raw confidence ranking. Headline numbers: `keep_most_sources` 99.0%, `keep_higher_confidence` 81.0%, `auto` 77.1%, `keep_higher_confidence_decayed` 90.5% (on the 21 pairs where evidence_type is present), overall 78.2% across all strategies. The original 24-pair v0.7.4 93.5% number is preserved unchanged at `benchmarks/contradictions/` and is not invalidated; it tested a different (smaller, easier) corpus.
+
+- **The wedge benchmark is v0.9**: "does the learning loop measurably reduce repeated coding-agent mistakes on a public task corpus?" The contradiction-resolution work in this release is internal schema-correctness validation. The empirical artifact that maps to the published essay framing — the learning loop is the durable layer — lands in v0.9 with a SWE-bench-style repeat-mistake benchmark.
 
 ## What's new in v0.8.0
 
@@ -572,10 +580,13 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] Slash command write operations (`/world-model resolve <id>`, `/world-model forget <id>`).
 - [x] `resolve_contradiction` accepts `confirmer` to stamp the winning fact as settled.
 
-### v0.8.1 (Next)
-- [ ] LoCoMo benchmark run with confidence-on / confidence-off comparison.
-- [ ] Expanded 200-pair contradiction-resolution benchmark published on HuggingFace (was 24 pairs in v0.7.4).
-- [ ] New contradiction-recall benchmark methodology testing what the v0.8.0 schema enables.
+### v0.8.1
+- [x] Expanded contradiction-resolution benchmark: 24 → 105 pairs across 19 categories, including 6 new categories that test the v0.8.0 schema (decay, provenance, confirmer).
+- [x] Honest per-strategy + per-category RESULTS.md with the v0.7.4 number preserved as baseline.
+
+### v0.9 (Next, in design)
+- [ ] **Repeat-mistake benchmark on AI coding tasks**. The empirical test of the central wedge: does the learning loop measurably reduce repeated agent mistakes? Runs against a SWE-bench-style task corpus with Claude Code headless, measures delta in repeat-mistake rate with vs without world-model-mcp learning the constraint from the first attempt. This is the artifact the visibility plan has been reaching for; it maps directly to the [June 2026 essay](https://medium.com/@saravanan_2424/your-ai-model-is-temporary-your-learning-loop-should-not-be-874380e8ccf7) framing.
+- [ ] `auto` strategy rewrite to fold in `confirmer` + decay awareness (should lift the v0.8.1 benchmark's auto score from 77.1% past 90%).
 - [ ] Antigravity CLI adapter (held since 2026-06-13; SDK lacks a `TransformCompactionHook` for the load-bearing memory-injection contract; re-verify 2026-06-27).
 - [ ] MCP spec 2026-07-28 readiness (stateless transport, `_meta` headers, `InputRequiredResult`).
 - [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
