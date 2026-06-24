@@ -1,5 +1,83 @@
 # World Model MCP - Release Notes
 
+## v0.9.0 (June 2026)
+
+Repeat-mistake benchmark on SWE-bench Verified. The empirical wedge proof world-model-mcp was building toward.
+
+### Headline
+
+v0.9.0 ships the locked v0.9 repeat-mistake benchmark on SWE-bench Verified. The benchmark tests whether the persistent-knowledge layer, with provenance and constraint extraction, measurably reduces repeated coding-agent mistakes across sessions on a public task corpus. Two paired arms (baseline and treatment) were run across 50 SWE-bench Verified tasks spanning django, sympy, matplotlib, scikit-learn, and sphinx. The result is a measurable improvement in both the within-domain and cross-domain conditions, with the cross-domain condition deliberately isolated to test transfer.
+
+Combined paired result across 49 instances: baseline 33/49 = 67.3 percent, treatment 38/49 = 77.6 percent, delta +10.2 percentage points. Within-domain delta +15.0 pts (Subset 1, django plus sympy). Cross-domain delta +6.9 pts (Subset 2, matplotlib plus scikit-learn plus sphinx). Six FAIL to PASS flips, one PASS to FAIL regression, zero cross-domain regressions on 18 baseline passes.
+
+The methodology is locked in `benchmarks/repeat-mistake/DESIGN.md` (committed 2026-06-17, before the benchmark ran). The full results, per-task tables, mechanistic analysis of the cross-domain flips, and honest limitations are in `benchmarks/repeat-mistake/RESULTS.md`.
+
+### What is new
+
+- **v0.9 repeat-mistake benchmark (B0)** in `benchmarks/repeat-mistake/`, the central wedge-proof artifact this release exists to ship:
+  - `DESIGN.md` (locked 2026-06-17): pre-specified hypothesis, interpretation thresholds, acceptance criteria, locked judge prompts, and honest corpus limitations. Methodology was committed before the data existed so the result cannot be accused of goalpost-moving.
+  - `RESULTS.md`: full results document with per-task tables for all 49 paired instances, mechanistic analysis of the two cross-domain flips (sphinx-9461 is the cleanest case), and explicit limitations section covering single-trial design, constraint-failure overlap, dropped-instance handling, and judge-model self-reference.
+  - Full raw artifacts: `baseline_progress.jsonl`, `baseline_results.jsonl`, `baseline_classified.jsonl`, `constraints.json`, `treatment_progress_s1.jsonl`, `treatment_results_s1.jsonl`, plus the Subset 2 equivalents and the cross-domain treatment artifacts.
+  - Orchestrator scripts: `orchestrator.py`, `agent_runner.py`, `predictions.py`, `score.py`, `failure_classifier.py`, `learning_hook.py`. Locked judge prompts in `failure_classifier.py` and `learning_hook.py`.
+
+- **SWE-bench Pro 7-category failure taxonomy** integrated into the classifier (arxiv 2509.16941). The judge prompt is verbatim from the SWE-bench Pro paper specification.
+
+- **Constraint extraction prompt** locked per-category, one short directive per Wrong Solution failure. Output shape compatible with the treatment-arm orchestrator via `constraints.json`.
+
+- **Paired comparison methodology** for cross-domain transfer: the Subset 2 treatment arm loads ONLY the Subset 1 constraints, deliberately holding out the 11 Subset 2 constraints to isolate the cross-domain effect. The 11 Subset 2 constraints are emitted to `constraints_s2.json` but NOT used in the v0.9 cross-domain test. This is the cleanest possible transfer signal from a public benchmark on this scale.
+
+### Results
+
+```
+Per-subset and combined paired results:
+
+  Subset 1 (within-domain: django + sympy)
+    Baseline:  15/20 = 75.0%
+    Treatment: 18/20 = 90.0%
+    Delta:     +3 tasks, +15.0 pts
+    Flips:     4 FAIL to PASS, 1 PASS to FAIL regression
+
+  Subset 2 (cross-domain: matplotlib + sklearn + sphinx)
+    Baseline:  18/29 = 62.1%   (29 paired, 1 dropped: scikit-learn-25102 upstream pip flag)
+    Treatment: 20/29 = 69.0%
+    Delta:     +2 tasks, +6.9 pts
+    Flips:     2 FAIL to PASS, 0 regressions
+
+  Combined (49 paired instances)
+    Baseline:  33/49 = 67.3%
+    Treatment: 38/49 = 77.6%
+    Delta:     +5 tasks, +10.2 pts
+    Flips:     6 FAIL to PASS, 1 regression
+```
+
+The two cross-domain flips both have plausible mechanistic explanations grounded in the loaded Subset 1 constraints. The strongest case is sphinx-9461 (classmethod+property documentation), where the Subset 1 sympy classmethod constraint about updating all call sites including module-level aliases transferred directly to a sphinx classmethod-wrapper unwrapping bug. See `benchmarks/repeat-mistake/RESULTS.md` section "Mechanistic analysis of the cross-domain flips" for the full reasoning.
+
+### Honest caveats embedded in RESULTS.md
+
+The benchmark ships with seven explicit limitations, including: single-trial design with no multi-seed replication; constraint-failure overlap on Subset 1 (the within-domain arm tests the upper bound, not generalization); the 18 percent cross-domain transfer rate is positive signal but bounded; zero cross-domain regressions is the most surprising finding and the one most likely to fail to replicate on a larger dataset; failure classification uses Claude as judge with the same model family as the agent; one dropped instance due to an upstream SWE-bench harness pip flag issue; and scoring infrastructure variance across Docker rebuilds and DNS retries. All seven limitations are stated verbatim in `RESULTS.md` rather than hidden in an appendix.
+
+### Reproducibility
+
+Every artifact needed to reproduce the v0.9 result is committed in this release:
+
+- `benchmarks/repeat-mistake/subset_50.json`: the 50-task selection
+- `benchmarks/repeat-mistake/verified.parquet`: SHA-pinned SWE-bench Verified snapshot
+- `benchmarks/repeat-mistake/{baseline,treatment}_progress*.jsonl`: every agent attempt
+- `benchmarks/repeat-mistake/{baseline,treatment}_predictions*.json`: every patch submitted to the harness
+- `benchmarks/repeat-mistake/{baseline,treatment}_results*.jsonl`: every harness score
+- `benchmarks/repeat-mistake/baseline_classified*.jsonl`: every failure classification
+- `benchmarks/repeat-mistake/constraints*.json`: every extracted constraint
+- `benchmarks/repeat-mistake/score_*.log`: full harness invocation logs
+- Locked judge prompts in `failure_classifier.py` and `learning_hook.py`
+
+Replication command sequence is in the `Reproducibility` section of `RESULTS.md`. Total agent cost across both arms was approximately 90 USD on a Claude Code subscription. Total wall-clock for scoring on a single Apple M2 Mac was approximately 40 hours including retries.
+
+### What this means for the wedge
+
+The v0.9 result is the empirical evidence world-model-mcp has been building toward since v0.7.0. The persistent-knowledge layer with provenance, decay, and constraint extraction produces a measurable improvement in coding-agent failure recovery, with the effect strongest within-domain (80 percent recovery rate when the constraint matches the failure mode) and present cross-domain (18 percent transfer rate, zero observed regressions on this dataset). The wedge is bounded honestly: domain-specific constraints help most when they match; out-of-domain constraints had zero observed cost on the families tested. Future work targets multi-seed replication and a larger task corpus.
+
+---
+
 ## v0.8.1 (June 2026)
 
 Contradiction-resolution benchmark expansion. Honest internal schema-correctness check.

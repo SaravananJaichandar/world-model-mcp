@@ -1,0 +1,160 @@
+{
+  "parquet_sha": "a45b1fe4e2f0c8390b2b2938ac83e92ed5979000856808f3679c07812e9e6dcd",
+  "total_tasks_in_dataset": 500,
+  "selection_method": "5 repos x 10 hardest tasks each",
+  "repos": {
+    "django/django": {
+      "total_in_dataset": 231,
+      "selected": 10,
+      "instance_ids": [
+        "django__django-10554",
+        "django__django-11138",
+        "django__django-11400",
+        "django__django-11885",
+        "django__django-12325",
+        "django__django-12708",
+        "django__django-13128",
+        "django__django-13212",
+        "django__django-13344",
+        "django__django-13449"
+      ],
+      "difficulty_distribution": {
+        "1-4 hours": 10
+      }
+    },
+    "sympy/sympy": {
+      "total_in_dataset": 75,
+      "selected": 10,
+      "instance_ids": [
+        "sympy__sympy-13878",
+        "sympy__sympy-12489",
+        "sympy__sympy-13852",
+        "sympy__sympy-14248",
+        "sympy__sympy-16597",
+        "sympy__sympy-17630",
+        "sympy__sympy-18199",
+        "sympy__sympy-11618",
+        "sympy__sympy-12419",
+        "sympy__sympy-13031"
+      ],
+      "difficulty_distribution": {
+        ">4 hours": 1,
+        "1-4 hours": 6,
+        "15 min - 1 hour": 3
+      }
+    },
+    "matplotlib/matplotlib": {
+      "total_in_dataset": 34,
+      "selected": 10,
+      "instance_ids": [
+        "matplotlib__matplotlib-14623",
+        "matplotlib__matplotlib-20488",
+        "matplotlib__matplotlib-20826",
+        "matplotlib__matplotlib-21568",
+        "matplotlib__matplotlib-22865",
+        "matplotlib__matplotlib-22871",
+        "matplotlib__matplotlib-23299",
+        "matplotlib__matplotlib-23314",
+        "matplotlib__matplotlib-23412",
+        "matplotlib__matplotlib-24026"
+      ],
+      "difficulty_distribution": {
+        "15 min - 1 hour": 10
+      }
+    },
+    "scikit-learn/scikit-learn": {
+      "total_in_dataset": 32,
+      "selected": 10,
+      "instance_ids": [
+        "scikit-learn__scikit-learn-25102",
+        "scikit-learn__scikit-learn-10297",
+        "scikit-learn__scikit-learn-10844",
+        "scikit-learn__scikit-learn-10908",
+        "scikit-learn__scikit-learn-11578",
+        "scikit-learn__scikit-learn-12682",
+        "scikit-learn__scikit-learn-12973",
+        "scikit-learn__scikit-learn-13124",
+        "scikit-learn__scikit-learn-14053",
+        "scikit-learn__scikit-learn-14087"
+      ],
+      "difficulty_distribution": {
+        "1-4 hours": 1,
+        "15 min - 1 hour": 9
+      }
+    },
+    "sphinx-doc/sphinx": {
+      "total_in_dataset": 44,
+      "selected": 10,
+      "instance_ids": [
+        "sphinx-doc__sphinx-7590",
+        "sphinx-doc__sphinx-11510",
+        "sphinx-doc__sphinx-8548",
+        "sphinx-doc__sphinx-9229",
+        "sphinx-doc__sphinx-9461",
+        "sphinx-doc__sphinx-10466",
+        "sphinx-doc__sphinx-10614",
+        "sphinx-doc__sphinx-10673",
+        "sphinx-doc__sphinx-11445",
+        "sphinx-doc__sphinx-7748"
+      ],
+      "difficulty_distribution": {
+        ">4 hours": 1,
+        "1-4 hours": 4,
+        "15 min - 1 hour": 5
+      }
+    }
+  },
+  "total_selected": 50,
+  "selected_ids": [
+    "django__django-10554",
+    "django__django-11138",
+    "django__django-11400",
+    "django__django-11885",
+    "django__django-12325",
+    "django__django-12708",
+    "django__django-13128",
+    "django__django-13212",
+    "django__django-13344",
+    "django__django-13449",
+    "sympy__sympy-13878",
+    "sympy__sympy-12489",
+    "sympy__sympy-13852",
+    "sympy__sympy-14248",
+    "sympy__sympy-16597",
+    "sympy__sympy-17630",
+    "sympy__sympy-18199",
+    "sympy__sympy-11618",
+    "sympy__sympy-12419",
+    "sympy__sympy-13031",
+    "matplotlib__matplotlib-14623",
+    "matplotlib__matplotlib-20488",
+    "matplotlib__matplotlib-20826",
+    "matplotlib__matplotlib-21568",
+    "matplotlib__matplotlib-22865",
+    "matplotlib__matplotlib-22871",
+    "matplotlib__matplotlib-23299",
+    "matplotlib__matplotlib-23314",
+    "matplotlib__matplotlib-23412",
+    "matplotlib__matplotlib-24026",
+    "scikit-learn__scikit-learn-25102",
+    "scikit-learn__scikit-learn-10297",
+    "scikit-learn__scikit-learn-10844",
+    "scikit-learn__scikit-learn-10908",
+    "scikit-learn__scikit-learn-11578",
+    "scikit-learn__scikit-learn-12682",
+    "scikit-learn__scikit-learn-12973",
+    "scikit-learn__scikit-learn-13124",
+    "scikit-learn__scikit-learn-14053",
+    "scikit-learn__scikit-learn-14087",
+    "sphinx-doc__sphinx-7590",
+    "sphinx-doc__sphinx-11510",
+    "sphinx-doc__sphinx-8548",
+    "sphinx-doc__sphinx-9229",
+    "sphinx-doc__sphinx-9461",
+    "sphinx-doc__sphinx-10466",
+    "sphinx-doc__sphinx-10614",
+    "sphinx-doc__sphinx-10673",
+    "sphinx-doc__sphinx-11445",
+    "sphinx-doc__sphinx-7748"
+  ]
+}

@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.8.1** -- 26 MCP tools, 19 CLI subcommands, 375 tests, 105-pair contradiction-resolution benchmark. Expands the v0.7.4 24-pair benchmark to 105 pairs across 19 categories, including 6 new categories that exercise the v0.8.0 provenance + decay schema. Internal correctness check, not a category benchmark — the real wedge benchmark (repeat-mistake rate on AI coding tasks) is coming in v0.9. v0.8.0 added domain-aware confidence decay with per-evidence-type TTL, per-item provenance fields `source_tool` and `confirmer`, slash command write operations, and a `confirmer` parameter on `resolve_contradiction`. Antigravity adapter held for the third consecutive release pending a `TransformCompactionHook` in the SDK; next re-verify 2026-06-27. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
+> **Status: v0.9.0** — 26 MCP tools, 19 CLI subcommands, 375 tests, SWE-bench Verified repeat-mistake benchmark with +10.2 pts paired delta across 49 instances (+15.0 pts within-domain, +6.9 pts cross-domain), 105-pair contradiction-resolution benchmark. v0.9 ships the empirical wedge proof: a locked, pre-registered methodology tested whether the persistent-knowledge layer measurably reduces repeated coding-agent mistakes on a public task corpus. Result confirms positive within-domain and cross-domain effects with zero observed regressions on out-of-domain tasks. Full per-task tables, mechanistic analysis of the two cross-domain flips (sphinx-9461 is the cleanest case), and honest limitations in [`benchmarks/repeat-mistake/RESULTS.md`](benchmarks/repeat-mistake/RESULTS.md). v0.8.1 expanded the contradiction-resolution benchmark to 105 pairs across 19 categories. v0.8.0 added domain-aware confidence decay with per-evidence-type TTL, per-item provenance fields `source_tool` and `confirmer`, slash command write operations, and a `confirmer` parameter on `resolve_contradiction`. Antigravity adapter held for the fourth consecutive release pending a `TransformCompactionHook` in the SDK; next re-verify 2026-07-24. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -29,6 +29,18 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.9.0
+
+- **Repeat-mistake benchmark on SWE-bench Verified** — the central wedge proof. 50 SWE-bench Verified tasks across django, sympy, matplotlib, scikit-learn, and sphinx, run as a paired baseline-vs-treatment comparison. Methodology was locked at [`benchmarks/repeat-mistake/DESIGN.md`](benchmarks/repeat-mistake/DESIGN.md) on 2026-06-17 (before the data existed) so the result cannot be accused of goalpost-moving.
+
+- **Headline results** — Subset 1 (within-domain: django + sympy) baseline 15/20 = 75.0 percent, treatment 18/20 = 90.0 percent, delta +15.0 pts with 4 FAIL to PASS flips and 1 regression. Subset 2 (cross-domain: matplotlib + scikit-learn + sphinx) baseline 18/29 = 62.1 percent, treatment 20/29 = 69.0 percent, delta +6.9 pts with 2 flips and zero regressions. Combined paired result across 49 instances: 33/49 to 38/49, delta +10.2 pts.
+
+- **Cross-domain transfer isolated cleanly** — the Subset 2 treatment arm loaded ONLY the 4 Subset 1 constraints (django and sympy directives), holding out the 11 Subset 2 constraints to test whether learning from one repo family generalizes to a different one. Two cross-domain flips with plausible mechanistic explanations grounded in the loaded constraints. Sphinx-9461 is the strongest case: a sympy classmethod constraint transferred to a sphinx classmethod-wrapper unwrapping bug.
+
+- **Honest caveats embedded in RESULTS.md** — seven explicit limitations including single-trial design, constraint-failure overlap on Subset 1, the small cross-domain transfer rate, one dropped instance due to an upstream SWE-bench pip flag issue, and judge-model self-reference risk. Stated verbatim rather than hidden in an appendix.
+
+- **Full reproducibility artifacts** — every progress JSONL, predictions JSON, results JSONL, classification JSONL, constraints JSON, and harness report JSON committed in [`benchmarks/repeat-mistake/`](benchmarks/repeat-mistake/). Locked judge prompts in `failure_classifier.py` and `learning_hook.py`. Total agent cost across both arms was approximately 90 USD on a Claude Code subscription.
 
 ## What's new in v0.8.1
 

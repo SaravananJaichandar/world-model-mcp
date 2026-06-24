@@ -1,0 +1,15 @@
+{
+  "constraints": [
+    "[matplotlib/matplotlib/Wrong Solution] When fixing colorbar drawedges with extend in colorbar.py, don't just slice divider indices\u2014the standard fix passes all X,Y segments and adjusts the outline/extension edges separately; verify against the tests.",
+    "[matplotlib/matplotlib/Wrong Solution] When fixing ConciseDateFormatter's offset, keep show_offset True whenever a coarser level (year/month) is constant across ticks; never gate it on a tick value equaling 1 (`np.any(unique==1)`).",
+    "[matplotlib/matplotlib/Wrong Solution] When fixing get_backend() clearing Gcf.figs, fix switch_backend's auto-backend resolution: skip the close(\"all\") when newbackend resolves to the same already-active backend, not just on literal equality.",
+    "[matplotlib/matplotlib/Wrong Solution] For Axes3D.set_visible, the `if not self.get_visible(): return` guard in draw() is the right idea but incomplete alone\u2014run lib/mpl_toolkits/tests/test_mplot3d.py to confirm the rendered output actually hides.",
+    "[matplotlib/matplotlib/Wrong Solution] To make a patch's dash offset render, fix the offset propagation in the GraphicsContext/backend draw path (e.g. set_dashes/gc handling), not just deleting Patch.draw's dashoffset-zeroing block.",
+    "[matplotlib/matplotlib/Wrong Solution] When fixing stackplot colors, run lib/matplotlib/tests/test_axes.py::test_stackplot* before finishing\u2014a plausible itertools.cycle swap must match the test's exact per-layer facecolors and unchanged cycler.",
+    "[scikit-learn/scikit-learn/Wrong Solution] When fixing the refit=False IndexError in LogisticRegressionCV, correct the array indexing itself (coefs_paths[i, best_indices[i], :] has too few/many dims for the multi_class case), not just the variable name in the if-condition.",
+    "[sphinx-doc/sphinx/Wrong Solution] When adding C++ UDL parsing to cpp.py, parse the literal-suffix as part of the literal in _parse_literal (try suffix on each numeric/string/char regex), not via separate post-hoc suffix regexes or operator\"\" xref wiring.",
+    "[sphinx-doc/sphinx/Wrong Solution] For inherited instance/data attributes in autodoc, iterate the MRO and match each base class's analyzer.attr_docs by that class's own objpath (module + qualname split), not the subject's namespace.",
+    "[sphinx-doc/sphinx/Wrong Solution] For classmethod+property (`@classmethod @property`) docs, detect it in PropertyDocumenter.import_object by checking `isinstance(self.object, classmethod)` and unwrap `__func__` to get the docstring\u2014`can_document_member` alone is insufficient.",
+    "[sphinx-doc/sphinx/Wrong Solution] When collecting overloaded signatures from a docstring, scan consecutive matching leading lines and strip each from `_new_docstrings`, then return a combined signature; verify against tests covering multiple overloads."
+  ]
+}
