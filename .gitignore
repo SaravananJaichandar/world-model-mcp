@@ -100,3 +100,4 @@ benchmarks/contradictions-200/results.json
 benchmarks/**/__pycache__/
 
 benchmarks/repeat-mistake/logs/
+benchmarks/repeat-mistake/paper.html
