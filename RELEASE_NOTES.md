@@ -1,5 +1,29 @@
 # World Model MCP - Release Notes
 
+## v0.9.1 (June 2026)
+
+Release-mechanics patch. No methodology changes; v0.9.0 benchmark results and RESULTS.md stand unchanged.
+
+### What this fixes
+
+v0.9.0 was built without running `scripts/embed_token.py` before `python -m build`. The published wheel shipped with an empty `EMBEDDED_TOKEN` stub. Per the design in `RELEASE.md`, this causes opt-in telemetry to silently no-op for v0.9.0 users. No functional regression, no crash, but the opt-in telemetry contract is not honored on v0.9.0.
+
+v0.9.1 ships with the embed step done correctly. Opt-in telemetry now works as designed for users who set `WORLD_MODEL_TELEMETRY_ENABLED=1`. The token is bounded in scope: it can only create issues in the private `SaravananJaichandar/world-model-telemetry` repo. Stub file in git remains empty.
+
+### What is unchanged from v0.9.0
+
+- All v0.9 benchmark methodology, results, and artifacts in `benchmarks/repeat-mistake/`. No re-run.
+- Combined paired result across 49 instances: baseline 33/49 to treatment 38/49, delta +10.2 pts.
+- Within-domain Subset 1 delta +15.0 pts; cross-domain Subset 2 delta +6.9 pts; 6 flips, 1 regression, 0 cross-domain regressions.
+- Full per-task tables, mechanistic analysis, and seven explicit limitations in `benchmarks/repeat-mistake/RESULTS.md`.
+- 26 MCP tools, 19 CLI subcommands, 375 tests.
+
+### Disposition of v0.9.0 on PyPI
+
+v0.9.0 is not yanked. Users on v0.9.0 are functional but lack opt-in telemetry collection. Anyone who wants telemetry should upgrade to v0.9.1. The pattern follows the security model documented in `RELEASE.md` (ship a patch release to rotate or restore the embedded token).
+
+---
+
 ## v0.9.0 (June 2026)
 
 Repeat-mistake benchmark on SWE-bench Verified. The empirical wedge proof world-model-mcp was building toward.
