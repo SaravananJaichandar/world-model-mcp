@@ -1,0 +1,8 @@
+{
+  "constraints": [
+    "[django/django/Wrong Solution] When fixing admin RelatedFieldListFilter ordering, fall back to the related model's `_meta.ordering` when ModelAdmin ordering is empty, and verify the full diff applies untruncated.",
+    "[django/django/Wrong Solution] When adding `params={'value': value}` to validators' ValidationError calls, patch EVERY raise site across all validator classes/functions (and merge into existing params dicts), not just a subset.",
+    "[sympy/sympy/Wrong Solution] When converting an instance method to classmethod/cls-based to fix subclassing, update ALL call sites including module-level aliases (e.g. `_af_new = Permutation._af_new`) and the `Perm`/class-name reference, not just the method body.",
+    "[sympy/sympy/Wrong Solution] For `is_even`/`is_integer` \u21d2 `is_finite`, add the implication on the `integer`/`even` node directly; don't rely on `rational -> finite`, since `even=True` is set without implying `rational`."
+  ]
+}

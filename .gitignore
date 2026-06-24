@@ -98,3 +98,5 @@ benchmarks/locomo/progress.jsonl
 benchmarks/locomo/results.json
 benchmarks/contradictions-200/results.json
 benchmarks/**/__pycache__/
+
+benchmarks/repeat-mistake/logs/
