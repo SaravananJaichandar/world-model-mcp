@@ -9,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![world-model-mcp MCP server](https://glama.ai/mcp/servers/SaravananJaichandar/world-model-mcp/badges/card.svg)](https://glama.ai/mcp/servers/SaravananJaichandar/world-model-mcp)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20834509.svg)](https://doi.org/10.5281/zenodo.20834509)
 
 mcp-name: io.github.SaravananJaichandar/world-model-mcp
 
