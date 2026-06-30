@@ -132,3 +132,19 @@ A v0.9.2 documentation patch with:
 ## Honesty commitment
 
 This plan is locked. No changes to the subset selection, the metrics, or the interpretation thresholds will be made after seed-2 runs begin. If a change is needed before the runs start (for example, a bug in the orchestrator), it will be documented in this file with the date of change and the reason.
+
+## Status update (appended 2026-06-30)
+
+Seed 2 baseline and treatment runs completed on 2026-06-29 through 2026-06-30. Harness scoring completed on 2026-06-30. No changes were made to the subset, metrics, or thresholds locked above.
+
+**Outcome: weak replication.**
+
+- Load-bearing replication: 0 of 7 instances had both their seed-1 baseline AND seed-1 treatment outcomes reproduced at seed 2.
+- Per-arm pass rate on the 17-instance subset: v0.9 baseline 6/17 (35.3 percent), seed-2 baseline 13/17 (76.5 percent). The baseline arm swung +41 percentage points between seeds with no methodology change.
+- Mean paired delta across both seeds on the 17 instances: +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47].
+
+Per the acceptance criteria locked above (criterion B: weak replication), the v0.9.2 documentation patch was prepared with a "Multi-seed replication" appendix added to `RESULTS.md` and to `paper.md`. The Zenodo record was updated to a new version.
+
+**Decision on seed 3: skipped.** The 0 of 7 load-bearing replication is clear and not borderline. Additional seeds at this subset would tighten the confidence interval but not flip the verdict. Time was better spent on the v0.9.2 release of the honest update than on additional data that would not change the story. Future replication (for v1.0 or peer-reviewed venue submission) should run all 49 paired instances at 3-5 seeds rather than another 17-instance pass.
+
+Full per-instance results and honest interpretation are in `RESULTS.md` (section "Multi-seed replication appendix (v0.9.2 update, 2026-06-30)") and `paper.md` (Appendix A).

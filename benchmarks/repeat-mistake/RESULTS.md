@@ -210,4 +210,165 @@ The v0.9 release positions world-model-mcp as an MCP-based persistent-knowledge 
 
 ---
 
-*Last updated: 2026-06-24.*
+# Multi-seed replication appendix (v0.9.2 update, 2026-06-30)
+
+Per the v0.9 limitations section ("Single-trial design. Some of the observed flips and the one regression may be due to single-trial variance rather than genuine constraint effects"), a multi-seed replication was carried out on a pre-registered 17-instance subset of the original 49 paired instances. The replication plan and acceptance thresholds were locked in `SEED_PLAN.md` on 2026-06-25, six days before any additional seed run.
+
+The result is an honest update of the v0.9 headline. The +10.2 pts paired delta on the full 49 paired instances at seed 1 (v0.9.1 ship) does NOT replicate on the 17-instance subset at seed 2. The constraint effect is substantially smaller than the v0.9 single-trial number suggested, and the v0.9 result was partly driven by an unlucky baseline draw rather than constraint effects alone.
+
+This appendix updates the confidence bounds on the v0.9 result. The single-trial v0.9 numbers in the main body of this document are preserved as published; this appendix adds the multi-seed evidence that bounds them.
+
+
+Subset selection (locked in SEED_PLAN.md)
+=========================================
+
+17 instances were drawn from the 49 paired instances of v0.9, in three categories:
+
+- **7 load-bearing instances**: the 6 FAIL-to-PASS flips and the 1 PASS-to-FAIL regression that drove the v0.9 headline numbers. Replication of these is the load-bearing test for the v0.9 result.
+  - `django__django-11400`, `django__django-13212`, `django__django-13344`, `sympy__sympy-16597` (within-domain flips)
+  - `sympy__sympy-17630` (regression)
+  - `scikit-learn__scikit-learn-14087`, `sphinx-doc__sphinx-9461` (cross-domain flips)
+- **5 variance-floor PASS** instances: tasks that PASSed in v0.9 in both arms, used to characterize stability of "easy" outcomes.
+  - `django__django-10554`, `sympy__sympy-11618`, `matplotlib__matplotlib-14623`, `scikit-learn__scikit-learn-10297`, `sphinx-doc__sphinx-10466`
+- **5 variance-floor FAIL** instances: tasks that FAILed in v0.9 in both arms, used to characterize stability of "hard" outcomes.
+  - `sympy__sympy-12489`, `matplotlib__matplotlib-22865`, `matplotlib__matplotlib-23314`, `sphinx-doc__sphinx-7590`, `sphinx-doc__sphinx-7748`
+
+
+Methodology (unchanged from v0.9)
+=================================
+
+Each instance was re-run at seed 2 in both baseline arm and treatment arm. The agent (Claude Code 2.1.177 headless), the task instance, the starting commit, and the test_patch were all identical to the v0.9 runs. The only intrinsic source of variance is the model's sampling at default temperature (Claude Code CLI does not expose a `--seed` or `--temperature` flag; "multi-seed" here means observing the model's existing sampling distribution by re-running). The treatment arm loaded the same 4 v0.9 constraints from `constraints.json`. No methodology changes were made between seed 1 and seed 2.
+
+
+Per-instance results (seed 1 vs seed 2)
+=======================================
+
+P = PASS, F = FAIL.
+
+| Instance | Category | b seed1 | b seed2 | t seed1 | t seed2 | Per-instance paired delta across 2 seeds |
+|---|---|---|---|---|---|---|
+| django-11400 | load-bearing flip | F | P | P | P | +1/2 |
+| django-13212 | load-bearing flip | F | P | P | P | +1/2 |
+| django-13344 | load-bearing flip | F | P | P | P | +1/2 |
+| sympy-16597 | load-bearing flip | F | P | P | P | +1/2 |
+| sympy-17630 | load-bearing regression | P | F | F | P | 0/2 |
+| sklearn-14087 | load-bearing flip (cross-domain) | F | P | P | P | +1/2 |
+| sphinx-9461 | load-bearing flip (cross-domain) | F | P | P | F | 0/2 |
+| django-10554 | variance-floor PASS | P | P | P | P | 0/2 |
+| sympy-11618 | variance-floor PASS | P | P | P | P | 0/2 |
+| matplotlib-14623 | variance-floor PASS | P | P | P | F | -1/2 |
+| sklearn-10297 | variance-floor PASS | P | P | P | P | 0/2 |
+| sphinx-10466 | variance-floor PASS | P | P | P | P | 0/2 |
+| sympy-12489 | variance-floor FAIL | F | P | F | P | 0/2 |
+| matplotlib-22865 | variance-floor FAIL | F | P | F | P | 0/2 |
+| matplotlib-23314 | variance-floor FAIL | F | F | F | F | 0/2 |
+| sphinx-7590 | variance-floor FAIL | F | F | F | F | 0/2 |
+| sphinx-7748 | variance-floor FAIL | F | F | F | F | 0/2 |
+
+
+Headline numbers
+================
+
+**Per-arm pass rate on the 17-instance subset:**
+
+| Run | Pass count | Pass rate |
+|---|---|---|
+| v0.9 baseline (seed 1) | 6/17 | 35.3% |
+| **seed 2 baseline** | **13/17** | **76.5%** |
+| v0.9 treatment (seed 1) | 11/17 | 64.7% |
+| **seed 2 treatment** | **12/17** | **70.6%** |
+
+The baseline arm pass rate swung **+41 percentage points** between seed 1 and seed 2 on the same 17 instances with no methodology change. The treatment arm swung **+6 pts** over the same window.
+
+**Per-seed paired delta on the 17-instance subset:**
+
+| Seed | Baseline pass | Treatment pass | Paired delta |
+|---|---|---|---|
+| Seed 1 (v0.9) | 6/17 | 11/17 | **+5** instances (+29 pts) |
+| Seed 2 | 13/17 | 12/17 | **-1** instance (-5.9 pts) |
+
+**Mean paired delta across both seeds, 17 instances:** +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47].
+
+**Load-bearing replication**: 0 of 7 load-bearing instances had both their seed-1 baseline AND seed-1 treatment outcomes reproduced at seed 2. Per the thresholds locked in SEED_PLAN.md, this is **weak replication**.
+
+
+Why the load-bearing replication count is zero
+==============================================
+
+The v0.9 result on these 7 load-bearing instances was defined by a specific baseline-vs-treatment outcome pattern:
+- 6 instances with baseline FAIL and treatment PASS (the flips)
+- 1 instance with baseline PASS and treatment FAIL (the regression)
+
+At seed 2, the baseline outcomes shifted dramatically:
+- 6 of the 6 "baseline FAIL" instances at seed 1 became baseline PASS at seed 2
+- The 1 "baseline PASS" instance at seed 1 became baseline FAIL at seed 2
+
+The treatment outcomes were more stable:
+- 5 of the 6 v0.9 "treatment PASS" instances remained treatment PASS at seed 2
+- The 1 v0.9 "treatment FAIL" (regression) instance became treatment PASS at seed 2 (interesting on its own)
+
+The replication failure is not because the treatment patches changed. It is because the baseline regressed to the mean. The same agent at the same temperature on the same task FAILed at seed 1 and PASSed at seed 2 for these instances. That is the variance signal the multi-seed test was designed to surface.
+
+
+Honest interpretation
+=====================
+
+**1. The v0.9 +10.2 pts headline was substantially inflated by an unlucky baseline draw.** When the baseline pass rate naturally swings +41 pts between seeds on the same 17 instances, the "constraint effect" measured in v0.9 cannot be cleanly separated from sampling noise. The original v0.9 paper's limitations section flagged this risk explicitly; multi-seed replication confirms it.
+
+**2. The constraint effect across two seeds is small but possibly nonzero.** Mean paired delta of +0.24 per instance (95 percent CI [0.00, 0.47]) indicates the treatment arm is, on average, marginally better than the baseline, but the effect is not statistically distinguishable from zero at sample size 2.
+
+**3. The cross-domain transfer claim weakens.** Of the two v0.9 cross-domain flips, only sklearn-14087 reproduced its treatment PASS at seed 2; sphinx-9461 regressed to treatment FAIL. The "0 cross-domain regressions on 18 baseline passes" finding from v0.9 is itself a fragile single-trial observation.
+
+**4. The single v0.9 regression (sympy-17630) was partial-replication noise.** v0.9 had baseline PASS and treatment FAIL. Seed 2 has baseline FAIL and treatment PASS. The instance is flaky in both arms; "regression" was a single-trial artifact.
+
+**5. A new treatment-side regression appeared at seed 2: matplotlib-14623.** This instance was variance-floor PASS in v0.9 (both arms) AND in seed 2 baseline, then FAILed in seed 2 treatment. The constraint loading occasionally produces patches that introduce broad PASS_TO_PASS regressions on previously stable tasks. The agent's patch fixed the FAIL_TO_PASS target test (`test_inverted_limits`) but broke 181 PASS_TO_PASS rendering tests.
+
+**6. The methodology discipline held.** SEED_PLAN.md was locked on 2026-06-25, six days before seed-2 runs began. The subset selection, the metrics, and the interpretation thresholds were pre-registered. The result was published verbatim. This is what the v0.9 limitations section said could happen, and it did. The honest update is shipped.
+
+
+Decision on seed 3
+==================
+
+Seed 3 was considered and skipped. Rationale:
+- The pattern at 0 of 7 load-bearing replication is clear, not borderline. Another seed would tighten the confidence interval from [0.00, 0.47] to perhaps [0.05, 0.35], but would not flip the verdict.
+- Cost of seed 3 on the 17-instance subset is approximately 60 USD agent time plus 4-5 hours scoring wall-clock.
+- Time is better spent on the v0.9.2 release of this honest update than on additional data that does not change the story.
+
+If a follow-up multi-seed test is run later (for v1.0 or for a TMLR submission), full-corpus (all 49 paired instances) at 3-5 seeds would be the appropriate scope, not another 17-instance pass.
+
+
+What this means for the wedge
+=============================
+
+The wedge claims at the architectural level (lifecycle-hook-based memory capture, per-fact provenance, per-evidence-type decay, PreToolUse defer enforcement) are unchanged. Multi-seed replication does not affect the schema design or the methodology choices.
+
+The empirical claim about the magnitude of the constraint effect on SWE-bench Verified is what changes:
+- v0.9 claimed: +10.2 pts paired delta across 49 instances at single trial
+- v0.9.2 honest update: the constraint effect on the load-bearing 17-instance subset across two seeds is +0.24 per instance (small, with 95 percent CI barely excluding zero), and the v0.9 single-trial result was substantially attributable to baseline variance rather than constraint effects alone.
+
+The wedge survives this update. The headline number does not.
+
+
+Reproducibility (multi-seed)
+============================
+
+All multi-seed artifacts are committed in this directory:
+
+| Artifact | Path |
+|---|---|
+| Pre-registered methodology | `SEED_PLAN.md` (locked 2026-06-25) |
+| Variance-analysis aggregator | `multi_seed_aggregate.py` |
+| Seed 2 baseline progress | `baseline_progress_seed2.jsonl` |
+| Seed 2 treatment progress | `treatment_progress_seed2_treatment.jsonl` |
+| Seed 2 baseline predictions | `baseline_predictions_seed2.json` |
+| Seed 2 treatment predictions | `treatment_predictions_seed2.json` |
+| Seed 2 baseline harness results | `baseline_results_seed2.jsonl` |
+| Seed 2 treatment harness results | `treatment_results_seed2.jsonl` |
+| Multi-seed summary | `multi_seed_summary_seed2.json` |
+
+Replication command for the multi-seed run is in SEED_PLAN.md. Total additional agent cost for seed 2 was approximately 53 USD. Total additional wall-clock for scoring on the same Apple M2 Mac was approximately 9 hours.
+
+
+---
+
+*Last updated: 2026-06-30.*

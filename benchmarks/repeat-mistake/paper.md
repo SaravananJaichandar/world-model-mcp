@@ -1,9 +1,9 @@
 # Persistent memory for AI coding agents: a pre-registered SWE-bench Verified benchmark
 
 **Author:** Saravanan Jaichandaran (independent, world-model-mcp maintainer)  
-**Date:** 2026-06-24  
-**Version:** v0.9.1  
-**DOI:** 10.5281/zenodo.20834509  
+**Date:** 2026-06-30 (v0.9.2 update; original 2026-06-24)  
+**Version:** v0.9.2 (this version adds Appendix A: multi-seed replication, which updates the confidence bounds on the v0.9 headline)  
+**DOI:** 10.5281/zenodo.20834509 (Zenodo concept DOI; this is version 2 of the same record)  
 **Code and artifacts:** https://github.com/SaravananJaichandaran/world-model-mcp  
 **License:** Paper CC-BY 4.0; code MIT  
 **Contact:** saravananjaichandar@gmail.com  
@@ -174,3 +174,83 @@ References
 - Zep / Graphiti: https://github.com/getzep/graphiti
 - @modelcontextprotocol/memory reference server: https://github.com/modelcontextprotocol/servers/tree/main/src/memory
 - world-model-mcp v0.9.1 release: https://github.com/SaravananJaichandaran/world-model-mcp/releases/tag/v0.9.1
+- world-model-mcp v0.9.2 release: https://github.com/SaravananJaichandaran/world-model-mcp/releases/tag/v0.9.2
+
+
+Appendix A: Multi-seed replication (v0.9.2 update, 2026-06-30)
+==============================================================
+
+The v0.9 limitations section identified single-trial design as the primary methodological risk: "Some of the observed flips and the one regression may be due to single-trial variance rather than genuine constraint effects." This appendix reports the multi-seed replication carried out to bound that risk. It was added to the v0.9.2 release on 2026-06-30 and is published verbatim per the pre-registration in SEED_PLAN.md.
+
+A.1 Pre-registered subset
+-------------------------
+
+A pre-registered 17-instance subset was selected from the 49 paired instances of v0.9 and locked in `SEED_PLAN.md` on 2026-06-25, six days before any additional seed run. The subset contains three categories: 7 load-bearing instances (the 6 FAIL-to-PASS flips and the 1 PASS-to-FAIL regression that drove the v0.9 headline), 5 variance-floor PASS instances (tasks that passed in both arms in v0.9, used to characterize the stability of easy outcomes), and 5 variance-floor FAIL instances (tasks that failed in both arms in v0.9). Subset selection, variance metrics, and interpretation thresholds were locked before seed 2 runs began.
+
+A.2 Methodology (unchanged)
+---------------------------
+
+Each instance was re-run at seed 2 in both baseline and treatment arms. The agent (Claude Code 2.1.177 headless), the task instance, the starting commit, and the test_patch were all identical to the v0.9 runs. Claude Code CLI does not expose a `--seed` or `--temperature` flag, so "multi-seed" here means observing the model's intrinsic sampling distribution at default temperature by re-running. The treatment arm loaded the same 4 v0.9 constraints from `constraints.json`. No methodology changes.
+
+A.3 Headline result
+-------------------
+
+Per-arm pass rates on the 17-instance subset:
+
+- v0.9 baseline (seed 1): 6 of 17 = 35.3 percent
+- Seed 2 baseline: 13 of 17 = 76.5 percent
+- v0.9 treatment (seed 1): 11 of 17 = 64.7 percent
+- Seed 2 treatment: 12 of 17 = 70.6 percent
+
+The baseline arm pass rate swung +41 percentage points between seed 1 and seed 2 on the same 17 instances, with no methodology change. The treatment arm swung +6 pts over the same window.
+
+Per-seed paired delta on the subset:
+
+- Seed 1 paired delta: +5 instances (+29 pts within the subset)
+- Seed 2 paired delta: -1 instance (-5.9 pts within the subset)
+- Mean paired delta across both seeds: +0.24 per instance, bootstrap 95 percent confidence interval [0.00, 0.47]
+
+Load-bearing replication: 0 of 7 load-bearing instances had both their seed-1 baseline outcome AND their seed-1 treatment outcome reproduced at seed 2. Per the thresholds locked in SEED_PLAN.md, this is weak replication.
+
+A.4 What drove the replication failure
+--------------------------------------
+
+The treatment arm at seed 2 is relatively stable: 5 of 6 v0.9 "treatment PASS" instances remained PASS at seed 2, and the 1 v0.9 "treatment FAIL" (sympy-17630, the regression) reverted to treatment PASS at seed 2. The treatment patches are not the source of the replication failure.
+
+The replication failure is driven by the baseline arm. All 6 v0.9 "baseline FAIL" instances on the load-bearing subset became baseline PASS at seed 2. The single v0.9 "baseline PASS" (sympy-17630) became baseline FAIL at seed 2. The same agent at the same temperature on the same task gave different outcomes between the two seeds. This is intrinsic agent variance, not constraint effect.
+
+A.5 Honest interpretation
+-------------------------
+
+The v0.9 +10.2 pts paired delta on 49 paired instances at single trial was substantially inflated by an unlucky baseline draw at seed 1. The mean paired delta across both seeds on the 17-instance subset is +0.24 per instance with a 95 percent confidence interval of [0.00, 0.47]. The constraint effect is small, possibly nonzero, and not statistically distinguishable from zero at sample size 2.
+
+Three secondary observations from seed 2:
+- Cross-domain transfer is more fragile than v0.9 claimed. sphinx-9461 (the cleanest mechanistic case in v0.9) regressed to treatment FAIL at seed 2; sklearn-14087 replicated.
+- The v0.9 regression (sympy-17630) was a single-trial artifact. The task is flaky in both arms, not a stable regression caused by the constraints.
+- A new treatment-side regression appeared at seed 2: matplotlib-14623, a variance-floor PASS instance in v0.9, passed seed 2 baseline but failed seed 2 treatment. The agent's patch fixed the FAIL_TO_PASS target test but broke 181 PASS_TO_PASS rendering tests. Constraint loading occasionally introduces broad PASS_TO_PASS regressions on previously stable tasks.
+
+A.6 What this changes
+---------------------
+
+Architectural claims of world-model-mcp (lifecycle-hook-based memory capture, per-fact provenance schema, per-evidence-type decay, PreToolUse defer enforcement) are unchanged by the multi-seed result. The empirical claim about the magnitude of the constraint effect on SWE-bench Verified is what changes: the +10.2 pts paired delta from v0.9 should be read as a single-trial upper bound, not as the steady-state effect size. The replicated effect size on this subset across two seeds is small, possibly zero.
+
+The wedge survives this update. The headline number does not.
+
+A.7 Decision on seed 3
+----------------------
+
+Seed 3 was considered and skipped. The 0 of 7 load-bearing replication pattern is clear, not borderline. Additional seeds at the 17-instance subset would tighten the confidence interval from [0.00, 0.47] to perhaps [0.05, 0.35] but would not flip the verdict. Future replication work (for v1.0 or for a peer-reviewed venue submission) should run all 49 paired instances at 3-5 seeds rather than another 17-instance pass.
+
+A.8 Reproducibility (multi-seed)
+--------------------------------
+
+Multi-seed artifacts are committed alongside the v0.9 artifacts in `benchmarks/repeat-mistake/`:
+
+- `SEED_PLAN.md`: pre-registered methodology, locked 2026-06-25
+- `multi_seed_aggregate.py`: variance-analysis script that produced the headline numbers above
+- `baseline_progress_seed2.jsonl`, `treatment_progress_seed2_treatment.jsonl`: seed-2 agent run records
+- `baseline_predictions_seed2.json`, `treatment_predictions_seed2.json`: seed-2 patch predictions for the SWE-bench harness
+- `baseline_results_seed2.jsonl`, `treatment_results_seed2.jsonl`: seed-2 harness scoring results
+- `multi_seed_summary_seed2.json`: aggregated variance metrics
+
+Total additional agent cost for seed 2 was approximately 53 USD. Total additional wall-clock for seed-2 scoring on a single Apple M2 Mac with 8 GB RAM was approximately 9 hours including Docker daemon restarts for disk reclamation.
