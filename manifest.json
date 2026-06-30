@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "world-model-mcp",
   "display_name": "World Model",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "Enforcement, provenance, and harness-neutral memory for AI coding agents. Temporal knowledge graph with PreToolUse constraint enforcement and PostCompact context re-injection.",
   "long_description": "world-model-mcp builds a temporal knowledge graph for your codebase: entities, facts with valid_at/invalid_at timestamps, learned constraints from corrections, decision traces, and confidence-weighted contradiction resolution. v0.7.0 adds PostCompact and UserPromptSubmit auto-injection hooks that re-emit relevant constraints and recent facts after context loss, a defer enforcement tier that pauses headless agents on recurring warning-level violations, a compaction audit log so developers can see what was remembered across compaction boundaries, and a Cursor adapter package for harness-neutral deployment.",
   "author": {

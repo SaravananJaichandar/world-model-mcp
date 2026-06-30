@@ -2,7 +2,7 @@
 
 **Enforcement, provenance, and harness-neutral memory for AI coding agents.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, and runs across Claude Code, Cursor, and pi.
 
-> **Status: v0.9.1** — 26 MCP tools, 19 CLI subcommands, 375 tests, SWE-bench Verified repeat-mistake benchmark with +10.2 pts paired delta across 49 instances (+15.0 pts within-domain, +6.9 pts cross-domain), 105-pair contradiction-resolution benchmark. v0.9 ships the empirical wedge proof: a locked, pre-registered methodology tested whether the persistent-knowledge layer measurably reduces repeated coding-agent mistakes on a public task corpus. Result confirms positive within-domain and cross-domain effects with zero observed regressions on out-of-domain tasks. Full per-task tables, mechanistic analysis of the two cross-domain flips (sphinx-9461 is the cleanest case), and honest limitations in [`benchmarks/repeat-mistake/RESULTS.md`](benchmarks/repeat-mistake/RESULTS.md). v0.8.1 expanded the contradiction-resolution benchmark to 105 pairs across 19 categories. v0.8.0 added domain-aware confidence decay with per-evidence-type TTL, per-item provenance fields `source_tool` and `confirmer`, slash command write operations, and a `confirmer` parameter on `resolve_contradiction`. Antigravity adapter held pending a `TransformCompactionHook` in the SDK. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
+> **Status: v0.9.2** — 26 MCP tools, 19 CLI subcommands, 375 tests, SWE-bench Verified repeat-mistake benchmark with a pre-registered methodology and a multi-seed replication appendix. v0.9.2 is a documentation patch over v0.9.1: it ships the multi-seed replication test that `SEED_PLAN.md` (locked 2026-06-25) committed to running. The seed-2 result tightens the confidence bounds on the v0.9 +10.2 pts paired delta significantly. On a pre-registered 17-instance subset, the load-bearing replication count is 0 of 7, the mean paired delta across two seeds is +0.24 per instance with bootstrap 95 percent CI [0.00, 0.47], and the v0.9 single-trial result was substantially attributable to an unlucky baseline draw rather than constraint effects alone. The wedge claims (lifecycle-hook capture, per-fact provenance, per-evidence-type decay, PreToolUse defer) are unchanged; the empirical headline is honestly bounded. Full appendix and per-instance results in [`benchmarks/repeat-mistake/RESULTS.md`](benchmarks/repeat-mistake/RESULTS.md). v0.9.1 restored the embedded telemetry token after a release-mechanics miss in v0.9.0. v0.9.0 shipped the empirical wedge proof. v0.8.1 expanded the contradiction-resolution benchmark to 105 pairs across 19 categories. v0.8.0 added domain-aware confidence decay with per-evidence-type TTL, per-item provenance fields `source_tool` and `confirmer`, slash command write operations, and a `confirmer` parameter on `resolve_contradiction`. Antigravity adapter held pending a `TransformCompactionHook` in the SDK. v0.7.6 added the `/world-model` slash command and `status-watch` TUI widget. v0.7.5 added the Codex CLI adapter. v0.7.0 introduced PostCompact auto-injection, the `defer` enforcement tier, confidence-weighted contradiction resolution, and a compaction audit log. Contributions welcome.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -30,6 +30,18 @@ World Model MCP creates a **temporal knowledge graph** of your codebase that lea
 Think of it as a long-term memory layer that runs alongside Claude Code, Cursor, or any MCP-aware coding agent.
 
 ---
+
+## What's new in v0.9.2
+
+- **Multi-seed replication appendix shipped per `SEED_PLAN.md`**. The v0.9 paper's primary limitation was single-trial design. v0.9.2 ships the multi-seed test that SEED_PLAN.md (locked 2026-06-25) committed to running. The result is published verbatim per the pre-registered acceptance criteria.
+
+- **Honest update to the v0.9 headline**. On the 17-instance pre-registered subset, baseline pass rate swung +41 percentage points between seed 1 and seed 2 with no methodology change. Load-bearing replication is 0 of 7 instances. Mean paired delta across both seeds is +0.24 per instance with bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts paired delta should be read as a single-trial upper bound; the replicated effect size is small, possibly nonzero.
+
+- **What is unchanged**: all v0.9.1 code, the 26 MCP tools, the 19 CLI subcommands, the 375 tests, the wedge claims at the architectural level (lifecycle-hook capture, per-fact provenance, per-evidence-type decay, PreToolUse defer). Architectural claims do not depend on the empirical effect size and survive the multi-seed update.
+
+- **Documentation diffs**: `benchmarks/repeat-mistake/RESULTS.md` adds a "Multi-seed replication appendix (v0.9.2 update)". `benchmarks/repeat-mistake/paper.md` adds Appendix A with the same content. `benchmarks/repeat-mistake/paper.pdf` is regenerated. `benchmarks/repeat-mistake/SEED_PLAN.md` adds a status update (the locked plan above is unchanged). Raw seed-2 artifacts (`baseline_progress_seed2.jsonl`, `treatment_progress_seed2_treatment.jsonl`, predictions, results, and the `multi_seed_summary_seed2.json` from `multi_seed_aggregate.py`) committed.
+
+- **The methodology discipline held**. Pre-registration prevented goalpost-moving. The honest update is published per the locked SEED_PLAN.md acceptance criteria. This is what pre-registration is for.
 
 ## What's new in v0.9.0
 
@@ -605,8 +617,11 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] All raw artifacts committed (per-task progress, predictions, scores, classifications, constraints, harness reports) so the benchmark is reproducible from a fresh checkout.
 - [x] v0.9.1 patch: restored embedded telemetry token after a release-mechanics miss in v0.9.0 (no methodology change; benchmark numbers unchanged).
 
+### v0.9.2 (Shipped 2026-06-30) — Multi-seed replication appendix
+- [x] Pre-registered 17-instance multi-seed test per `benchmarks/repeat-mistake/SEED_PLAN.md` (locked 2026-06-25). Outcome: load-bearing replication 0 of 7; mean paired delta across two seeds is +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts headline was substantially attributable to an unlucky baseline draw. Honest update published per the pre-registered acceptance criteria. Appendix in `RESULTS.md` and `paper.md`. Zenodo record updated to version 2.
+
 ### v0.10 (Next, in design)
-- [ ] Multi-seed replication of the v0.9 SWE-bench Verified benchmark to tighten confidence intervals on the cross-domain transfer claim.
+- [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.
 - [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
 - [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram).
 - [ ] Explicit failure-mode-similarity scoring to predict when cross-domain transfer will succeed.

@@ -1,5 +1,43 @@
 # World Model MCP - Release Notes
 
+## v0.9.2 (June 2026)
+
+Documentation patch. Ships the multi-seed replication that `SEED_PLAN.md` (locked 2026-06-25) committed to running. No code changes; no methodology changes; honest update to the confidence bounds on the v0.9 paired-delta headline.
+
+### What this release IS about
+
+The v0.9 paper shipped on 2026-06-24 with a single-trial result: +10.2 pts paired delta across 49 paired SWE-bench Verified instances. The paper's limitations section identified single-trial design as the primary methodological risk ("Some of the observed flips and the one regression may be due to single-trial variance rather than genuine constraint effects"). v0.9.2 ships the multi-seed test that SEED_PLAN.md called for and publishes the result verbatim per the pre-registered acceptance criteria.
+
+The result tightens the confidence bounds significantly. On a pre-registered 17-instance subset, baseline pass rate swung +41 percentage points between seeds 1 and 2 with no methodology change. Of the 7 load-bearing instances that drove the v0.9 headline, 0 of 7 had both their seed-1 baseline AND treatment outcomes reproduced at seed 2. The mean paired delta across both seeds on the 17-instance subset is +0.24 per instance with a bootstrap 95 percent CI of [0.00, 0.47]. The constraint effect is small, possibly nonzero, and not statistically distinguishable from zero at sample size 2.
+
+### Why this is a v0.9.2 patch and not a retraction
+
+The methodology discipline held. SEED_PLAN.md was locked six days before any additional seed run, with subset selection, variance metrics, and interpretation thresholds committed to public source. The seed-2 result hit acceptance criterion B (weak replication). The honest update was prepared and shipped per the pre-registered plan. This is what pre-registration is for.
+
+The wedge claims at the architectural level (lifecycle-hook-based memory capture, per-fact provenance schema, per-evidence-type decay, PreToolUse defer enforcement) are unchanged. The empirical claim about the magnitude of the constraint effect on SWE-bench Verified is what changes: the v0.9 +10.2 pts paired delta should be read as a single-trial upper bound, not as the steady-state effect size. The replicated effect size on the load-bearing subset across two seeds is small, possibly zero.
+
+### What is new in v0.9.2
+
+- **Multi-seed replication appendix added to `benchmarks/repeat-mistake/RESULTS.md`**. Includes the pre-registered 17-instance subset, per-instance results across seed 1 and seed 2, headline numbers (per-arm pass rate, per-seed paired delta, mean paired delta with bootstrap 95 percent CI), the honest interpretation, the decision to skip seed 3, and what this changes for the wedge.
+
+- **Multi-seed appendix added to `benchmarks/repeat-mistake/paper.md` as Appendix A**. Same content as RESULTS.md appendix, in paper-shaped prose. The `paper.pdf` is regenerated to include the appendix.
+
+- **`SEED_PLAN.md` status update appended (preserving the pre-registered plan above)**. Documents the seed-2 outcome and the seed-3 skip decision per acceptance criterion B locked above.
+
+- **Multi-seed raw artifacts committed**: `baseline_progress_seed2.jsonl`, `treatment_progress_seed2_treatment.jsonl`, `baseline_predictions_seed2.json`, `treatment_predictions_seed2.json`, `baseline_results_seed2.jsonl`, `treatment_results_seed2.jsonl`, `multi_seed_summary_seed2.json`. Anyone can re-run the aggregator against these files.
+
+### What is unchanged
+
+- All v0.9.1 code: 26 MCP tools, 19 CLI subcommands, 375 tests, opt-in telemetry.
+- All v0.9 benchmark methodology and per-task tables in the main body of RESULTS.md and paper.md. The single-trial v0.9 numbers are preserved verbatim; the appendix adds the multi-seed evidence that bounds them.
+- The v0.9 Zenodo preprint (DOI 10.5281/zenodo.20834509) — the concept DOI resolves to the latest version; v0.9.2 ships as a new version of the same record.
+
+### Honest framing
+
+This release demonstrates that the v0.9 methodology discipline (pre-registered DESIGN.md, locked judge prompts, explicit limitations) survives contact with a replication test that disagrees with the single-trial headline. The honest update is shipped. The discipline is the moat, not the headline number.
+
+---
+
 ## v0.9.1 (June 2026)
 
 Release-mechanics patch. No methodology changes; v0.9.0 benchmark results and RESULTS.md stand unchanged.

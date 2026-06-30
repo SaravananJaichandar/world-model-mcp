@@ -1,0 +1,503 @@
+{
+  "rows": [
+    {
+      "instance_id": "django__django-11400",
+      "category": "load_bearing_flip",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "flaky",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "django__django-13212",
+      "category": "load_bearing_flip",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "flaky",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "django__django-13344",
+      "category": "load_bearing_flip",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "flaky",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-16597",
+      "category": "load_bearing_flip",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "flaky",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-17630",
+      "category": "load_bearing_regression",
+      "baseline_seeds": [
+        true,
+        false,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 0.5,
+      "baseline_stability": "flaky",
+      "treatment_stability": "flaky",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": false
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-14087",
+      "category": "load_bearing_flip_crossdomain",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "flaky",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-9461",
+      "category": "load_bearing_flip_crossdomain",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        false,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 0.5,
+      "baseline_stability": "flaky",
+      "treatment_stability": "flaky",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "django__django-10554",
+      "category": "variance_floor_pass",
+      "baseline_seeds": [
+        true,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 1.0,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "stable_pass",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-11618",
+      "category": "variance_floor_pass",
+      "baseline_seeds": [
+        true,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 1.0,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "stable_pass",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-14623",
+      "category": "variance_floor_pass",
+      "baseline_seeds": [
+        true,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        false,
+        null
+      ],
+      "baseline_pass_rate": 1.0,
+      "treatment_pass_rate": 0.5,
+      "baseline_stability": "stable_pass",
+      "treatment_stability": "flaky",
+      "paired_delta_sum": -1,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "scikit-learn__scikit-learn-10297",
+      "category": "variance_floor_pass",
+      "baseline_seeds": [
+        true,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 1.0,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "stable_pass",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-10466",
+      "category": "variance_floor_pass",
+      "baseline_seeds": [
+        true,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        true,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 1.0,
+      "treatment_pass_rate": 1.0,
+      "baseline_stability": "stable_pass",
+      "treatment_stability": "stable_pass",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": true,
+        "treatment": true
+      }
+    },
+    {
+      "instance_id": "sympy__sympy-12489",
+      "category": "variance_floor_fail",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 0.5,
+      "baseline_stability": "flaky",
+      "treatment_stability": "flaky",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": false
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-22865",
+      "category": "variance_floor_fail",
+      "baseline_seeds": [
+        false,
+        true,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        true,
+        null
+      ],
+      "baseline_pass_rate": 0.5,
+      "treatment_pass_rate": 0.5,
+      "baseline_stability": "flaky",
+      "treatment_stability": "flaky",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        false
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": false
+      }
+    },
+    {
+      "instance_id": "matplotlib__matplotlib-23314",
+      "category": "variance_floor_fail",
+      "baseline_seeds": [
+        false,
+        false,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        false,
+        null
+      ],
+      "baseline_pass_rate": 0.0,
+      "treatment_pass_rate": 0.0,
+      "baseline_stability": "stable_fail",
+      "treatment_stability": "stable_fail",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": false
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-7590",
+      "category": "variance_floor_fail",
+      "baseline_seeds": [
+        false,
+        false,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        false,
+        null
+      ],
+      "baseline_pass_rate": 0.0,
+      "treatment_pass_rate": 0.0,
+      "baseline_stability": "stable_fail",
+      "treatment_stability": "stable_fail",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": false
+      }
+    },
+    {
+      "instance_id": "sphinx-doc__sphinx-7748",
+      "category": "variance_floor_fail",
+      "baseline_seeds": [
+        false,
+        false,
+        null
+      ],
+      "treatment_seeds": [
+        false,
+        false,
+        null
+      ],
+      "baseline_pass_rate": 0.0,
+      "treatment_pass_rate": 0.0,
+      "baseline_stability": "stable_fail",
+      "treatment_stability": "stable_fail",
+      "paired_delta_sum": 0,
+      "n_paired_seeds": 2,
+      "same_direction_seeds": [
+        true,
+        true
+      ],
+      "v09_expected": {
+        "baseline": false,
+        "treatment": false
+      }
+    }
+  ],
+  "load_bearing": {
+    "n_instances": 7,
+    "replicated_count": 0,
+    "interpretation": "weak_replication"
+  },
+  "variance_floor": {
+    "pass_floor_counts": {
+      "stable_pass": 9,
+      "flaky": 1
+    },
+    "fail_floor_counts": {
+      "flaky": 4,
+      "stable_fail": 6
+    }
+  },
+  "paired_delta_summary": {
+    "n_instances": 17,
+    "mean_delta": 0.23529411764705882,
+    "bootstrap_95_ci": [
+      0.0,
+      0.47058823529411764
+    ]
+  }
+}
