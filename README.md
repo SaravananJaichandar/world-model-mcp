@@ -9,7 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![world-model-mcp MCP server](https://glama.ai/mcp/servers/SaravananJaichandar/world-model-mcp/badges/card.svg)](https://glama.ai/mcp/servers/SaravananJaichandar/world-model-mcp)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20834509.svg)](https://doi.org/10.5281/zenodo.20834509)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20834508.svg)](https://doi.org/10.5281/zenodo.20834508)
 
 mcp-name: io.github.SaravananJaichandar/world-model-mcp
 
@@ -670,7 +670,7 @@ v0.7.3 added anonymous usage telemetry. It is:
 ### v0.9 (Shipped 2026-06-24) — Repeat-mistake benchmark on SWE-bench Verified
 - [x] **Pre-registered SWE-bench Verified benchmark**. The empirical test of the central wedge: does the learning loop measurably reduce repeated agent mistakes on a public task corpus? Methodology locked in [`benchmarks/repeat-mistake/DESIGN.md`](benchmarks/repeat-mistake/DESIGN.md) on 2026-06-17, a week before the benchmark ran. Pre-registered hypothesis, interpretation thresholds, judge prompts, and SWE-bench Pro 7-category failure taxonomy. No goalpost-moving.
 - [x] **Result: +10.2 pts combined paired delta across 49 SWE-bench Verified instances** (baseline 33/49 = 67.3% → treatment 38/49 = 77.6%). Within-domain delta +15.0 pts on django + sympy. Cross-domain delta +6.9 pts on matplotlib + scikit-learn + sphinx with zero observed regressions on 18 baseline passes. 6 FAIL-to-PASS flips, 1 regression. Full per-task tables, mechanistic analysis of the cross-domain flips, and seven explicit limitations in [`benchmarks/repeat-mistake/RESULTS.md`](benchmarks/repeat-mistake/RESULTS.md).
-- [x] Pre-registered paper preprint with DOI: [10.5281/zenodo.20834509](https://doi.org/10.5281/zenodo.20834509). CC-BY 4.0. PDF and markdown source at [`benchmarks/repeat-mistake/paper.pdf`](benchmarks/repeat-mistake/paper.pdf) / [`paper.md`](benchmarks/repeat-mistake/paper.md).
+- [x] Pre-registered paper preprint with DOI: [10.5281/zenodo.20834508](https://doi.org/10.5281/zenodo.20834508). CC-BY 4.0. PDF and markdown source at [`benchmarks/repeat-mistake/paper.pdf`](benchmarks/repeat-mistake/paper.pdf) / [`paper.md`](benchmarks/repeat-mistake/paper.md).
 - [x] Constraint extraction pipeline grounded in the SWE-bench Pro 7-category failure taxonomy (arXiv:2509.16941). Locked classifier and extractor prompts in `failure_classifier.py` and `learning_hook.py`.
 - [x] All raw artifacts committed (per-task progress, predictions, scores, classifications, constraints, harness reports) so the benchmark is reproducible from a fresh checkout.
 - [x] v0.9.1 patch: restored embedded telemetry token after a release-mechanics miss in v0.9.0 (no methodology change; benchmark numbers unchanged).

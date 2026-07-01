@@ -182,7 +182,7 @@ weighing whether to switch:
   a `PreToolUse` defer enforcement tier for hooks, and a pre-registered
   SWE-bench Verified benchmark with published methodology (see
   [`benchmarks/repeat-mistake/`](../../benchmarks/repeat-mistake/) and
-  Zenodo DOI 10.5281/zenodo.20834509).
+  Zenodo DOI 10.5281/zenodo.20834508).
 
 The two are not drop-in replacements. Pick ClawMem if you want a lightweight
 shared vault. Pick world-model-mcp if you want the schema and enforcement

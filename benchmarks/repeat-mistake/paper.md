@@ -3,7 +3,7 @@
 **Author:** Saravanan Jaichandaran (independent, world-model-mcp maintainer)  
 **Date:** 2026-06-30 (v0.9.2 update; original 2026-06-24)  
 **Version:** v0.9.2 (this version adds Appendix A: multi-seed replication, which updates the confidence bounds on the v0.9 headline)  
-**DOI:** 10.5281/zenodo.20834509 (Zenodo concept DOI; this is version 2 of the same record)  
+**DOI:** 10.5281/zenodo.20834508 (Zenodo concept DOI, resolves to latest; version 2 lives at 10.5281/zenodo.21076824)  
 **Code and artifacts:** https://github.com/SaravananJaichandaran/world-model-mcp  
 **License:** Paper CC-BY 4.0; code MIT  
 **Contact:** saravananjaichandar@gmail.com  
