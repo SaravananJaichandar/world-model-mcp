@@ -39,6 +39,9 @@ http = [
     "uvicorn>=0.30.0",
     "starlette>=0.40.0",
 ]
+hermes = [
+    "ruamel.yaml>=0.17",
+]
 
 [project.scripts]
 world-model = "world_model_server.cli:main"
@@ -58,6 +61,7 @@ packages = ["world_model_server"]
 "world_model_server/adapters/codex/config.toml" = "world_model_server/adapters/codex/config.toml"
 "world_model_server/adapters/codex/hooks_snippet.toml" = "world_model_server/adapters/codex/hooks_snippet.toml"
 "world_model_server/adapters/openclaw/openclaw.json" = "world_model_server/adapters/openclaw/openclaw.json"
+"world_model_server/adapters/hermes/config-snippet.yaml" = "world_model_server/adapters/hermes/config-snippet.yaml"
 "world_model_server/hooks/world-model-capture.js" = "world_model_server/hooks/world-model-capture.js"
 "world_model_server/hooks/world-model-inject.js" = "world_model_server/hooks/world-model-inject.js"
 "world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"

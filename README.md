@@ -219,6 +219,21 @@ python -m world_model_server.cli install-openclaw
 
 Pure additive integration — OpenClaw ships no native memory layer, so all 27 world-model tools become available to OpenClaw agent turns without capability overlap. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01. MCP-registration only in v0.10; a TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) is on the v0.10.x roadmap. See [adapters/openclaw/README.md](adapters/openclaw/README.md).
 
+### Option 8: Run inside Hermes Agent (experimental, v0.10)
+
+For users of NousResearch's [Hermes Agent](https://github.com/NousResearch/hermes-agent):
+
+```bash
+pip install "world-model-mcp[hermes]"          # the [hermes] extra pulls ruamel.yaml
+python -m world_model_server.cli setup
+python -m world_model_server.cli install-hermes
+# From inside a Hermes session: /reload-mcp   (loads the new server without restarting)
+```
+
+`install-hermes` merges an `mcp_servers.world-model` block into `~/.hermes/config.yaml` while preserving all other keys — including every comment and blank line in Hermes' heavily-commented 1327-line reference config, via `ruamel.yaml` round-trip mode. Defaults the `command` field to `sys.executable` (absolute path). Flags: `--force`, `--dry-run`, `--python <abs-path>`, `--db-path <path>`. Relative `--python` values are rejected as a hard error.
+
+Hermes ships its own bounded memory system (`MEMORY.md` + `USER.md`, character-capped, no auto-decay per Hermes docs). world-model-mcp adds the temporal fact graph with per-fact provenance, per-evidence-type decay, and confidence-weighted contradiction resolution on top — additive, not overlapping. The overlap with the exclusive `MemoryProvider` plugin slot (currently held by ClawMem for many users) is documented in [adapters/hermes/README.md](adapters/hermes/README.md). Verified end-to-end against Hermes v0.17.0 (2026.6.19) on macOS: `hermes mcp test world-model` reports 27 tools. MCP-registration is the v0.10 track; a native `MemoryProvider` plugin is on the v0.10+ roadmap and ships only if MCP-route adoption warrants.
+
 ### What Gets Installed
 
 ```
@@ -637,7 +652,7 @@ v0.7.3 added anonymous usage telemetry. It is:
 
 ### v0.10 (In progress)
 - [x] **OpenClaw adapter (MCP registration) + `install-openclaw` CLI**. First v0.10 adapter shipped. Registers world-model-mcp as an MCP server inside OpenClaw via `python -m world_model_server.cli install-openclaw` (or manual `openclaw mcp add`) — pure additive since OpenClaw ships no native memory layer. The CLI merges into `~/.openclaw/openclaw.json` preserving other keys, defaults the interpreter path to `sys.executable` (absolute), rejects relative `--python` overrides (OpenClaw's process spawn does not inherit shell PATH), and supports `--dry-run` / `--force` / `--db-path`. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01: `openclaw mcp probe world-model` reports 27 tools discovered. See [`adapters/openclaw/`](./adapters/openclaw/). Remaining follow-up: TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) — will ship only if MCP-only adoption justifies the plugin work.
-- [ ] Hermes Agent adapter (MCP route). Hermes v0.17.0 (NousResearch, MIT) has first-class MCP client support plus a documented `MemoryProvider` plugin ABC. Ship the MCP route first; native plugin only if MCP route shows traction — Hermes allows exactly one external memory provider active at a time and [yoloshii/ClawMem](https://github.com/yoloshii/ClawMem) already occupies that slot for many users.
+- [x] **Hermes Agent adapter (MCP registration) + `install-hermes` CLI**. Registers world-model-mcp as an external MCP server inside Hermes Agent via `python -m world_model_server.cli install-hermes` (or manual `~/.hermes/config.yaml` edit). The CLI uses `ruamel.yaml` round-trip mode to merge into `mcp_servers.world-model` while preserving every comment and blank line in the user's config file (Hermes ships a 1327-line reference `config.yaml` with ~1000 lines of documentation comments; a naive `pyyaml.safe_dump` would destroy them, verified during E2E testing). Defaults the interpreter path to `sys.executable` (absolute), rejects relative `--python` overrides, supports `--dry-run` / `--force` / `--db-path`. Requires the `[hermes]` optional extra so `ruamel.yaml` is available. Verified end-to-end against Hermes Agent `v0.17.0 (2026.6.19)` on macOS on 2026-07-01: `hermes mcp test world-model` reports 27 tools discovered. Hermes' built-in memory (`MEMORY.md` + `USER.md`, character-capped, no auto-decay per Hermes docs) is complemented additively by world-model-mcp's per-fact provenance and per-evidence-type decay. The exclusive `MemoryProvider` plugin slot (currently held by [ClawMem](https://github.com/yoloshii/ClawMem) for many users) is documented as a separate track; native plugin implementation deferred pending MCP-route adoption. See [`adapters/hermes/`](./adapters/hermes/).
 - [ ] Continue adapter. Largest OSS coding agent not tied to a platform vendor; higher priority after the SpaceX/Cursor acquisition changes the platform-risk math.
 - [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.
 - [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
