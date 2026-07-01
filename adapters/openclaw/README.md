@@ -7,10 +7,10 @@ other channels. It ships no native memory layer, so world-model-mcp is
 pure additive here: persistent facts, per-fact provenance, and per-evidence
 decay for a runtime that had none of those.
 
-Status: experimental. Verified against the OpenClaw config schema
-documented at [docs.openclaw.ai/cli/mcp](https://docs.openclaw.ai/cli/mcp)
-as of 2026-07-01. PRs welcome for any breakage; see the
-**Reporting issues** section.
+Status: experimental. Verified end-to-end against OpenClaw
+`2026.6.11 (e085fa1)` on macOS on 2026-07-01: `openclaw mcp probe
+world-model` reports 27 tools discovered. PRs welcome for any breakage;
+see the **Reporting issues** section.
 
 ## What you get
 
@@ -38,8 +38,11 @@ pip install -U world-model-mcp
 python -m world_model_server.cli setup
 
 # 3. Register world-model as an MCP server in OpenClaw
+#    Use the ABSOLUTE path to python3 — OpenClaw's process spawn does
+#    not inherit your shell's PATH, so `python3` alone will fail with
+#    "MCP error -32000: Connection closed" during probe.
 openclaw mcp add world-model \
-    --command python3 \
+    --command "$(which python3)" \
     --arg -m \
     --arg world_model_server.server \
     --env WORLD_MODEL_DB_PATH=.claude/world-model
@@ -47,14 +50,15 @@ openclaw mcp add world-model \
 
 Step 3 writes into `~/.openclaw/openclaw.json` under the `mcp.servers`
 object. The equivalent JSON snippet, if you prefer to edit the config
-file by hand, is bundled as [`openclaw.json`](./openclaw.json):
+file by hand, is bundled as [`openclaw.json`](./openclaw.json). Replace
+`/absolute/path/to/python3` with the output of `which python3`:
 
 ```json
 {
   "mcp": {
     "servers": {
       "world-model": {
-        "command": "python3",
+        "command": "/absolute/path/to/python3",
         "args": ["-m", "world_model_server.server"],
         "env": {
           "WORLD_MODEL_DB_PATH": ".claude/world-model"
@@ -168,11 +172,14 @@ depth described above.
   requires `PYTHONPATH` to find `world_model_server`, install it into
   the environment `python3` resolves to instead of relying on the env
   block.
-- **`python3` on PATH.** The adapter uses `python3` as the command. On
-  systems where the world-model-mcp interpreter is a venv or `pyenv`
-  install, you may need to replace `python3` with the absolute path to
-  the correct interpreter. Get the path with `which python3` from a
-  shell where `python -c "import world_model_server"` works.
+- **`python3` MUST be an absolute path — bare `python3` will fail.**
+  OpenClaw's process spawn does not inherit your shell's PATH. If you
+  register the server with `--command python3` you will see
+  `MCP error -32000: Connection closed` on probe even though running
+  `python3 -m world_model_server.server` works fine from your shell.
+  Fix: use `$(which python3)` in the CLI command, or hand-edit
+  `~/.openclaw/openclaw.json` to substitute the absolute path.
+  Verified against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01.
 - **Working directory.** Because `WORLD_MODEL_DB_PATH=.claude/world-model`
   is a relative path, it resolves against OpenClaw's process working
   directory. If OpenClaw is a user-wide gateway (not launched from a
