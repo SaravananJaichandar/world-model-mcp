@@ -211,17 +211,13 @@ For users of [OpenClaw](https://github.com/openclaw/openclaw), the local-first p
 ```bash
 pip install world-model-mcp
 python -m world_model_server.cli setup
-# NOTE: --command MUST be the absolute path to python3.
-# OpenClaw's process spawn does not inherit your shell PATH.
-openclaw mcp add world-model \
-    --command "$(which python3)" \
-    --arg -m \
-    --arg world_model_server.server \
-    --env WORLD_MODEL_DB_PATH=.claude/world-model
+python -m world_model_server.cli install-openclaw
 # Verify: openclaw mcp probe world-model  (should report 27 tools)
 ```
 
-Pure additive integration — OpenClaw ships no native memory layer, so all 27 world-model tools become available to OpenClaw agent turns without capability overlap. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01. This is MCP-registration only in v0.10; a TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) is on the v0.10.x roadmap. See [adapters/openclaw/README.md](adapters/openclaw/README.md).
+`install-openclaw` merges an `mcp.servers.world-model` entry into `~/.openclaw/openclaw.json` while preserving all other keys in the config file. It defaults the `command` field to `sys.executable` (absolute path to the interpreter running the CLI) — necessary because OpenClaw's process spawn does not inherit shell PATH; a bare `python3` fails probe with `MCP error -32000: Connection closed`. Flags: `--force` (overwrite existing entry), `--dry-run` (print without writing), `--python <abs-path>` (override interpreter), `--db-path <path>` (override `WORLD_MODEL_DB_PATH`, default `.claude/world-model`). Relative `--python` values are rejected as a hard error.
+
+Pure additive integration — OpenClaw ships no native memory layer, so all 27 world-model tools become available to OpenClaw agent turns without capability overlap. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01. MCP-registration only in v0.10; a TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) is on the v0.10.x roadmap. See [adapters/openclaw/README.md](adapters/openclaw/README.md).
 
 ### What Gets Installed
 
@@ -640,7 +636,7 @@ v0.7.3 added anonymous usage telemetry. It is:
 - [x] Pre-registered 17-instance multi-seed test per `benchmarks/repeat-mistake/SEED_PLAN.md` (locked 2026-06-25). Outcome: load-bearing replication 0 of 7; mean paired delta across two seeds is +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts headline was substantially attributable to an unlucky baseline draw. Honest update published per the pre-registered acceptance criteria. Appendix in `RESULTS.md` and `paper.md`. Zenodo record updated to version 2.
 
 ### v0.10 (In progress)
-- [x] **OpenClaw adapter (MCP registration)**. First v0.10 adapter shipped. Registers world-model-mcp as an MCP server inside OpenClaw via `openclaw mcp add` — pure additive since OpenClaw ships no native memory layer. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01: `openclaw mcp probe world-model` reports 27 tools discovered. See [`adapters/openclaw/`](./adapters/openclaw/). Follow-ups tracked: `install-openclaw` CLI subcommand, TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...).
+- [x] **OpenClaw adapter (MCP registration) + `install-openclaw` CLI**. First v0.10 adapter shipped. Registers world-model-mcp as an MCP server inside OpenClaw via `python -m world_model_server.cli install-openclaw` (or manual `openclaw mcp add`) — pure additive since OpenClaw ships no native memory layer. The CLI merges into `~/.openclaw/openclaw.json` preserving other keys, defaults the interpreter path to `sys.executable` (absolute), rejects relative `--python` overrides (OpenClaw's process spawn does not inherit shell PATH), and supports `--dry-run` / `--force` / `--db-path`. Verified end-to-end against OpenClaw `2026.6.11 (e085fa1)` on macOS on 2026-07-01: `openclaw mcp probe world-model` reports 27 tools discovered. See [`adapters/openclaw/`](./adapters/openclaw/). Remaining follow-up: TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) — will ship only if MCP-only adoption justifies the plugin work.
 - [ ] Hermes Agent adapter (MCP route). Hermes v0.17.0 (NousResearch, MIT) has first-class MCP client support plus a documented `MemoryProvider` plugin ABC. Ship the MCP route first; native plugin only if MCP route shows traction — Hermes allows exactly one external memory provider active at a time and [yoloshii/ClawMem](https://github.com/yoloshii/ClawMem) already occupies that slot for many users.
 - [ ] Continue adapter. Largest OSS coding agent not tied to a platform vendor; higher priority after the SpaceX/Cursor acquisition changes the platform-risk math.
 - [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.

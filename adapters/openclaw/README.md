@@ -28,7 +28,7 @@ lifecycle hook surface (`before_prompt_build`, `before_tool_call`,
 world-model-mcp requires an OpenClaw plugin bundle (TypeScript) and is
 tracked separately — see **Roadmap for this adapter** below.
 
-## Install (from your project root)
+## Install (recommended: CLI subcommand)
 
 ```bash
 # 1. Install the package
@@ -38,9 +38,37 @@ pip install -U world-model-mcp
 python -m world_model_server.cli setup
 
 # 3. Register world-model as an MCP server in OpenClaw
-#    Use the ABSOLUTE path to python3 — OpenClaw's process spawn does
-#    not inherit your shell's PATH, so `python3` alone will fail with
-#    "MCP error -32000: Connection closed" during probe.
+python -m world_model_server.cli install-openclaw
+```
+
+Step 3 merges an entry into `~/.openclaw/openclaw.json` under
+`mcp.servers.world-model`, preserving all other keys in the file.
+Defaults the `command` field to `sys.executable` (the absolute path
+to the interpreter running the CLI), which side-steps the OpenClaw
+PATH-spawn issue described in **Caveats** below.
+
+**Flags** — `install-openclaw` supports:
+
+| Flag | Purpose |
+| --- | --- |
+| `--config-path PATH` | Override `~/.openclaw/openclaw.json` (used by tests; not usually needed) |
+| `--python PATH` | Absolute path to the python3 you want OpenClaw to spawn. Default: the interpreter running the CLI. Relative values are rejected. |
+| `--db-path PATH` | Value for `WORLD_MODEL_DB_PATH`. Default: `.claude/world-model` |
+| `--dry-run` | Print the proposed `mcp.servers.world-model` entry without writing |
+| `--force` | Replace the entry if `mcp.servers.world-model` already exists |
+
+Verify the wire-up:
+
+```bash
+openclaw mcp probe world-model
+# Expect: - world-model: 27 tools
+```
+
+## Manual install (fallback)
+
+If you want to skip the CLI and use OpenClaw's own tooling:
+
+```bash
 openclaw mcp add world-model \
     --command "$(which python3)" \
     --arg -m \
@@ -48,8 +76,8 @@ openclaw mcp add world-model \
     --env WORLD_MODEL_DB_PATH=.claude/world-model
 ```
 
-Step 3 writes into `~/.openclaw/openclaw.json` under the `mcp.servers`
-object. The equivalent JSON snippet, if you prefer to edit the config
+Same end result as `install-openclaw`. The absolute path for
+`--command` is critical — see **Caveats**. The equivalent JSON snippet, if you prefer to edit the config
 file by hand, is bundled as [`openclaw.json`](./openclaw.json). Replace
 `/absolute/path/to/python3` with the output of `which python3`:
 
