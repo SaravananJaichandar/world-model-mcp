@@ -1,5 +1,51 @@
 # World Model MCP - Release Notes
 
+## v0.10.0 (July 2026)
+
+Adapter-surface release. Three new adapters ship in one release, extending the harness-neutral memory story from four runtimes to seven: **OpenClaw**, **Hermes Agent**, and **Continue**. Each is verified end-to-end against a live installation of the target runtime. No server-side code changes; no schema changes; no benchmark methodology changes.
+
+### What this release IS about
+
+Cross-runtime memory has been the central v0.10 thesis since the roadmap locked at the end of v0.9.2. The 2026-06-30 deep research on the Hermes/OpenClaw/ClawMem competitive landscape surfaced three facts that shaped this release:
+
+1. **OpenClaw ships no native memory layer.** Pure-additive integration — the OpenClaw agent turn simply gains 27 world-model tools with no capability overlap or slot competition. Highest fit-to-cost of any v0.10 candidate.
+
+2. **Hermes ships a bounded manual-curation memory system** (`MEMORY.md` + `USER.md`, character-capped, no auto-decay — the docs explicitly say "Memory does not auto-compact"). world-model-mcp's per-fact provenance and per-evidence-type decay are complementary, not overlapping. The differentiation gap remains intact against Hermes v0.17.0.
+
+3. **ClawMem already ships a cross-runtime memory adapter** (Claude Code + OpenClaw + Hermes) against a plain key-value SQLite vault. This release positions on schema depth, not on being first-to-integrate — the differentiator is provenance + decay + PreToolUse enforcement, not the fact of cross-runtime coverage.
+
+### What is new in v0.10.0
+
+- **OpenClaw adapter + `install-openclaw` CLI**. Merges into `~/.openclaw/openclaw.json` under `mcp.servers.world-model`, preserving all other keys. Defaults `command` to `sys.executable` (absolute path). Rejects relative `--python` overrides as a hard error. Verified against OpenClaw `2026.6.11 (e085fa1)` on macOS: `openclaw mcp probe world-model` reports 27 tools discovered.
+
+- **The absolute-path gotcha, documented.** During E2E verification of OpenClaw, the first attempt failed with `MCP error -32000: Connection closed`. Root cause: OpenClaw's process spawn does not inherit shell PATH, so `--command python3` failed even though `python3 -m world_model_server.server` worked fine from the shell. The fix propagated to Hermes and Continue as a precaution: every v0.10 install command defaults to `sys.executable` and rejects relative `--python` overrides. This is the kind of gotcha you only find by running against a real install.
+
+- **Hermes Agent adapter + `install-hermes` CLI**. Merges into `~/.hermes/config.yaml` under `mcp_servers.world-model`. Uses `ruamel.yaml` round-trip mode to preserve every comment and blank line in Hermes' 1327-line reference config. Requires the `[hermes]` optional extra (`pip install "world-model-mcp[hermes]"`).
+
+- **The comment-preservation regression test.** An initial `pyyaml.safe_dump` implementation stripped ~1170 lines of documentation from Hermes' reference config during E2E testing (data-preserving, formatting-catastrophic). The fix — `ruamel.yaml` round-trip mode — is locked down by `test_f2_install_hermes_preserves_comments_and_blank_lines`. Same kind of gotcha as the OpenClaw one: only surfaces against a real install.
+
+- **Continue adapter + `install-continue` CLI**. Writes a standalone `<project>/.continue/mcpServers/world-model.yaml` following Continue's documented per-server-file pattern. No config merge needed. CLI-side E2E verified: the exact stdio spawn Continue would perform returns 27 tools via a live `tools/list` JSON-RPC roundtrip. Last-mile "does Continue's LLM surface the tools in agent mode" verification requires a live VS Code / JetBrains session and is called out in the adapter README.
+
+- **Cross-runtime shared memory.** All v0.10 adapters default `WORLD_MODEL_DB_PATH` to `.claude/world-model` — a project-relative path. A project running in multiple clients shares one SQLite fact graph across all of them. Override with an absolute `--db-path` for user-wide shared memory.
+
+- **Test suite grew from 375 to 417.** Every adapter's test suite includes bundled-file validity, dry-run behavior, absolute-path defaults, idempotence, `--force` overwrite, relative-`--python` rejection, parent-directory creation, malformed-config handling, and subparser-registration regression coverage.
+
+### What is unchanged
+
+- All v0.9.2 code paths: the 26 base MCP tools (no new server-side tools in v0.10; the "27 tools" count reported by adapters includes `resolve_contradiction` from v0.8.0), the SWE-bench Verified benchmark, the multi-seed replication appendix, the paper and preprint on Zenodo (10.5281/zenodo.20834509).
+- The wedge claims at the architectural level (lifecycle-hook capture, per-fact provenance, per-evidence-type decay, PreToolUse defer).
+- The multi-seed-honesty framing from v0.9.2: the v0.9 +10.2 pts paired delta remains published as a single-trial upper bound.
+
+### Roadmap follow-ups tracked in this release
+
+- OpenClaw TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) — only if MCP-only adoption justifies the plugin work.
+- Hermes native `MemoryProvider` ABC plugin (Track B) — only if MCP-route adoption justifies the plugin work; ClawMem already occupies the exclusive external-memory-provider slot for many users.
+- Continue `--global` config-merge path into `~/.continue/config.yaml` (would use `ruamel.yaml` round-trip mode like the Hermes adapter).
+- Full-corpus multi-seed replication: all 49 paired SWE-bench Verified instances at 3-5 seeds.
+- Head-to-head benchmarks against mem0, Letta, Zep, piia-engram, ClawMem.
+
+---
+
 ## v0.9.2 (June 2026)
 
 Documentation patch. Ships the multi-seed replication that `SEED_PLAN.md` (locked 2026-06-25) committed to running. No code changes; no methodology changes; honest update to the confidence bounds on the v0.9 paired-delta headline.
