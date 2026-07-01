@@ -1,0 +1,13 @@
+# world-model-mcp adapter for Hermes Agent
+# Merge this block into ~/.hermes/config.yaml under the `mcp_servers` key.
+# Replace /absolute/path/to/python3 with the output of `which python3`.
+mcp_servers:
+  world-model:
+    command: /absolute/path/to/python3
+    args:
+      - -m
+      - world_model_server.server
+    env:
+      WORLD_MODEL_DB_PATH: .claude/world-model
+    enabled: true
+    timeout: 30

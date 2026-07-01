@@ -659,6 +659,118 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def install_hermes_command(args):
+    """Register world-model-mcp as an MCP server in Hermes Agent's config.
+
+    Merges an entry into ~/.hermes/config.yaml under mcp_servers.world-model.
+    Uses ruamel.yaml round-trip mode so existing comments, blank lines, and
+    key ordering in the user's config are preserved — Hermes ships a heavily
+    commented reference config and a naive YAML rewrite would strip 1000+
+    lines of documentation. Defaults --python to sys.executable (absolute
+    path) as a precaution against process-spawn PATH issues observed with
+    sibling adapters. Requires the [hermes] optional extra so ruamel.yaml
+    is available for the round-trip merge.
+    """
+    try:
+        from ruamel.yaml import YAML
+        from ruamel.yaml.error import YAMLError
+        from ruamel.yaml.comments import CommentedMap
+    except ImportError:
+        console.print(
+            "[red]install-hermes requires ruamel.yaml.[/red]\n"
+            'Install with: pip install "world-model-mcp[hermes]"'
+        )
+        sys.exit(1)
+
+    config_path = Path(args.config_path).expanduser().resolve() if args.config_path else (
+        Path.home() / ".hermes" / "config.yaml"
+    )
+
+    python_bin = args.python or sys.executable
+    if not Path(python_bin).is_absolute():
+        console.print(
+            f"[red]--python must be an absolute path (got: {python_bin!r}).[/red]\n"
+            "Hermes' process spawn may not inherit shell PATH; a relative "
+            "interpreter name is not safe."
+        )
+        sys.exit(1)
+
+    db_path = args.db_path or ".claude/world-model"
+
+    server_entry = {
+        "command": python_bin,
+        "args": ["-m", "world_model_server.server"],
+        "env": {
+            "WORLD_MODEL_DB_PATH": db_path,
+        },
+        "enabled": True,
+        "timeout": 30,
+    }
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+
+    if config_path.exists():
+        try:
+            existing = yaml_rt.load(config_path.read_text())
+        except YAMLError as exc:
+            console.print(
+                f"[red]Failed to parse {config_path} as YAML: {exc}[/red]\n"
+                "Fix the config file by hand or delete it and rerun."
+            )
+            sys.exit(1)
+        if existing is None:
+            existing = CommentedMap()
+    else:
+        existing = CommentedMap()
+
+    if not isinstance(existing, dict):
+        console.print(f"[red]{config_path} did not parse as a YAML mapping; refusing to write.[/red]")
+        sys.exit(1)
+
+    if "mcp_servers" not in existing:
+        existing["mcp_servers"] = CommentedMap()
+    mcp_servers = existing["mcp_servers"]
+    if not isinstance(mcp_servers, dict):
+        console.print(
+            f"[red]mcp_servers in {config_path} is not a YAML mapping; refusing to write.[/red]"
+        )
+        sys.exit(1)
+
+    if "world-model" in mcp_servers and not args.force:
+        console.print(
+            f"[yellow]Hermes adapter already present at {config_path} "
+            "(mcp_servers.world-model)[/yellow]\n"
+            "Use --force to overwrite the existing entry."
+        )
+        return
+
+    if args.dry_run:
+        import io
+        console.print(f"[bold]Would write to:[/bold] {config_path}")
+        console.print("\n--- proposed mcp_servers.world-model entry ---\n")
+        buf = io.StringIO()
+        yaml_rt.dump({"world-model": server_entry}, buf)
+        console.print(buf.getvalue())
+        return
+
+    mcp_servers["world-model"] = server_entry
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w") as f:
+        yaml_rt.dump(existing, f)
+
+    console.print("[green]Hermes adapter installed[/green]")
+    console.print(f"  Wrote mcp_servers.world-model to {config_path}")
+    console.print(f"  command: {python_bin}")
+    console.print(f"  WORLD_MODEL_DB_PATH: {db_path}")
+    console.print(
+        "\nNext: from inside a Hermes session run:\n  /reload-mcp\n"
+        "to load the new server without restarting Hermes."
+    )
+
+
 def install_codex_command(args):
     """Wire world-model-mcp into Codex CLI by appending to ~/.codex/config.toml.
 
@@ -1056,6 +1168,36 @@ def main():
         help="Print what would be appended without writing",
     )
     codex_parser.set_defaults(func=install_codex_command)
+
+    hermes_parser = subparsers.add_parser(
+        "install-hermes",
+        help="Wire world-model-mcp into Hermes Agent by merging into ~/.hermes/config.yaml",
+    )
+    hermes_parser.add_argument(
+        "--config-path", type=str, default=None,
+        help="Override the Hermes config path (default: ~/.hermes/config.yaml)",
+    )
+    hermes_parser.add_argument(
+        "--python", type=str, default=None,
+        help=(
+            "Absolute path to the python3 that has world-model-mcp installed. "
+            "Default: sys.executable (the interpreter running this CLI). "
+            "Relative values are rejected."
+        ),
+    )
+    hermes_parser.add_argument(
+        "--db-path", type=str, default=None,
+        help="WORLD_MODEL_DB_PATH env value for the MCP server (default: .claude/world-model)",
+    )
+    hermes_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite the mcp_servers.world-model entry if already present",
+    )
+    hermes_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print what would be written without modifying the config file",
+    )
+    hermes_parser.set_defaults(func=install_hermes_command)
 
     status_watch_parser = subparsers.add_parser(
         "status-watch",

@@ -204,6 +204,21 @@ python -m world_model_server.cli install-codex
 
 `--dry-run` prints what would be appended without writing; `--force` re-appends even if the adapter marker is already present. The bundled snippet uses `world_model` (underscore) as the MCP server name to dodge Codex's silent hyphen-strip in its tool-name sanitizer. Hook output is camelCase with `deny_unknown_fields` compliance against Codex's strict Rust schema; the contract is locked down by tests in `tests/test_v075_features.py`. See [adapters/codex/README.md](adapters/codex/README.md).
 
+### Option 7: Run inside Hermes Agent (experimental, v0.10)
+
+For users of NousResearch's [Hermes Agent](https://github.com/NousResearch/hermes-agent):
+
+```bash
+pip install "world-model-mcp[hermes]"          # the [hermes] extra pulls pyyaml
+python -m world_model_server.cli setup
+python -m world_model_server.cli install-hermes
+# From inside a Hermes session: /reload-mcp   (loads the new server without restarting)
+```
+
+`install-hermes` merges an `mcp_servers.world-model` block into `~/.hermes/config.yaml` while preserving all other keys. Defaults the `command` field to `sys.executable` (absolute path to the interpreter running the CLI) as a precaution against process-spawn PATH issues observed with sibling adapters. Flags: `--force` (overwrite existing entry), `--dry-run` (print without writing), `--python <abs-path>` (override interpreter), `--db-path <path>` (override `WORLD_MODEL_DB_PATH`, default `.claude/world-model`). Relative `--python` values are rejected as a hard error.
+
+Hermes ships its own bounded memory system (`MEMORY.md` + `USER.md`, character-capped, no auto-decay). world-model-mcp adds the temporal fact graph with per-fact provenance, per-evidence-type decay, and confidence-weighted contradiction resolution on top — additive, not overlapping. The overlap with the exclusive `MemoryProvider` plugin slot (currently held by ClawMem for many users) is documented in [adapters/hermes/README.md](adapters/hermes/README.md). MCP-registration is the v0.10 track; a native `MemoryProvider` plugin is on the v0.10+ roadmap and ships only if MCP-route adoption warrants.
+
 ### What Gets Installed
 
 ```
@@ -620,15 +635,18 @@ v0.7.3 added anonymous usage telemetry. It is:
 ### v0.9.2 (Shipped 2026-06-30) — Multi-seed replication appendix
 - [x] Pre-registered 17-instance multi-seed test per `benchmarks/repeat-mistake/SEED_PLAN.md` (locked 2026-06-25). Outcome: load-bearing replication 0 of 7; mean paired delta across two seeds is +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts headline was substantially attributable to an unlucky baseline draw. Honest update published per the pre-registered acceptance criteria. Appendix in `RESULTS.md` and `paper.md`. Zenodo record updated to version 2.
 
-### v0.10 (Next, in design)
+### v0.10 (In progress)
+- [x] **Hermes Agent adapter (MCP registration) + `install-hermes` CLI**. Registers world-model-mcp as an external MCP server inside Hermes Agent via `python -m world_model_server.cli install-hermes` (or manual `~/.hermes/config.yaml` edit). The CLI uses `ruamel.yaml` round-trip mode to merge into `mcp_servers.world-model` while preserving every comment and blank line in the user's config file (Hermes ships a 1327-line reference `config.yaml` with ~1000 lines of documentation comments; a naive `pyyaml.safe_dump` would destroy them, verified during E2E testing). Defaults the interpreter path to `sys.executable` (absolute), rejects relative `--python` overrides, supports `--dry-run` / `--force` / `--db-path`. Requires the `[hermes]` optional extra so `ruamel.yaml` is available. Verified end-to-end against Hermes Agent `v0.17.0 (2026.6.19)` on macOS on 2026-07-01: `hermes mcp test world-model` reports 27 tools discovered. Hermes' built-in memory (`MEMORY.md` + `USER.md`, character-capped, no auto-decay per Hermes docs) is complemented additively by world-model-mcp's per-fact provenance and per-evidence-type decay. The exclusive `MemoryProvider` plugin slot (currently held by [ClawMem](https://github.com/yoloshii/ClawMem) for many users) is documented as a separate track; native plugin implementation deferred pending MCP-route adoption. See [`adapters/hermes/`](./adapters/hermes/).
 - [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.
 - [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
-- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram).
+- [ ] Continue adapter. Largest OSS coding agent not tied to a platform vendor; higher priority after the SpaceX/Cursor acquisition changes the platform-risk math.
+- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram, ClawMem).
 - [ ] Explicit failure-mode-similarity scoring to predict when cross-domain transfer will succeed.
 - [ ] `auto` strategy rewrite to fold in `confirmer` + decay awareness (should lift the v0.8.1 contradiction-resolution benchmark's auto score from 77.1% past 90%).
 - [ ] Antigravity CLI adapter (held pending a `TransformCompactionHook` in the SDK for the load-bearing memory-injection contract).
 - [ ] MCP spec readiness for upcoming spec versions (stateless transport, `_meta` headers, `InputRequiredResult`).
 - [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
+- [ ] Windsurf adapter.
 
 ---
 
