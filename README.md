@@ -204,6 +204,23 @@ python -m world_model_server.cli install-codex
 
 `--dry-run` prints what would be appended without writing; `--force` re-appends even if the adapter marker is already present. The bundled snippet uses `world_model` (underscore) as the MCP server name to dodge Codex's silent hyphen-strip in its tool-name sanitizer. Hook output is camelCase with `deny_unknown_fields` compliance against Codex's strict Rust schema; the contract is locked down by tests in `tests/test_v075_features.py`. See [adapters/codex/README.md](adapters/codex/README.md).
 
+### Option 7: Run inside OpenClaw (experimental, v0.10)
+
+For users of [OpenClaw](https://github.com/openclaw/openclaw), the local-first personal AI assistant that routes across WhatsApp, Telegram, Slack, and Discord:
+
+```bash
+pip install world-model-mcp
+python -m world_model_server.cli setup
+openclaw mcp add world-model \
+    --command python3 \
+    --arg -m \
+    --arg world_model_server.server \
+    --env WORLD_MODEL_DB_PATH=.claude/world-model
+# Restart the OpenClaw gateway; verify with: openclaw mcp list
+```
+
+Pure additive integration — OpenClaw ships no native memory layer, so all 26 world-model tools become available to OpenClaw agent turns without capability overlap. This is MCP-registration only in v0.10; a TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...) is on the v0.10.x roadmap. See [adapters/openclaw/README.md](adapters/openclaw/README.md).
+
 ### What Gets Installed
 
 ```
@@ -620,15 +637,19 @@ v0.7.3 added anonymous usage telemetry. It is:
 ### v0.9.2 (Shipped 2026-06-30) — Multi-seed replication appendix
 - [x] Pre-registered 17-instance multi-seed test per `benchmarks/repeat-mistake/SEED_PLAN.md` (locked 2026-06-25). Outcome: load-bearing replication 0 of 7; mean paired delta across two seeds is +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts headline was substantially attributable to an unlucky baseline draw. Honest update published per the pre-registered acceptance criteria. Appendix in `RESULTS.md` and `paper.md`. Zenodo record updated to version 2.
 
-### v0.10 (Next, in design)
+### v0.10 (In progress)
+- [x] **OpenClaw adapter (MCP registration)**. First v0.10 adapter shipped. Registers world-model-mcp as an MCP server inside OpenClaw via `openclaw mcp add` — pure additive since OpenClaw ships no native memory layer. See [`adapters/openclaw/`](./adapters/openclaw/). Follow-ups tracked: `install-openclaw` CLI subcommand, TypeScript plugin bundle for typed lifecycle hooks (`before_prompt_build`, `before_tool_call`, `before_compaction`, `session_start`, ...).
+- [ ] Hermes Agent adapter (MCP route). Hermes v0.17.0 (NousResearch, MIT) has first-class MCP client support plus a documented `MemoryProvider` plugin ABC. Ship the MCP route first; native plugin only if MCP route shows traction — Hermes allows exactly one external memory provider active at a time and [yoloshii/ClawMem](https://github.com/yoloshii/ClawMem) already occupies that slot for many users.
+- [ ] Continue adapter. Largest OSS coding agent not tied to a platform vendor; higher priority after the SpaceX/Cursor acquisition changes the platform-risk math.
 - [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.
 - [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
-- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram).
+- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram, ClawMem).
 - [ ] Explicit failure-mode-similarity scoring to predict when cross-domain transfer will succeed.
 - [ ] `auto` strategy rewrite to fold in `confirmer` + decay awareness (should lift the v0.8.1 contradiction-resolution benchmark's auto score from 77.1% past 90%).
 - [ ] Antigravity CLI adapter (held pending a `TransformCompactionHook` in the SDK for the load-bearing memory-injection contract).
 - [ ] MCP spec readiness for upcoming spec versions (stateless transport, `_meta` headers, `InputRequiredResult`).
 - [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
+- [ ] Windsurf adapter.
 
 ---
 
