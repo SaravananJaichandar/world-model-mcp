@@ -60,6 +60,7 @@ packages = ["world_model_server"]
 "world_model_server/adapters/pi/package.json" = "world_model_server/adapters/pi/package.json"
 "world_model_server/adapters/codex/config.toml" = "world_model_server/adapters/codex/config.toml"
 "world_model_server/adapters/codex/hooks_snippet.toml" = "world_model_server/adapters/codex/hooks_snippet.toml"
+"world_model_server/adapters/openclaw/openclaw.json" = "world_model_server/adapters/openclaw/openclaw.json"
 "world_model_server/adapters/hermes/config-snippet.yaml" = "world_model_server/adapters/hermes/config-snippet.yaml"
 "world_model_server/hooks/world-model-capture.js" = "world_model_server/hooks/world-model-capture.js"
 "world_model_server/hooks/world-model-inject.js" = "world_model_server/hooks/world-model-inject.js"
