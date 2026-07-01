@@ -659,6 +659,77 @@ def export_claude_md_command(args):
     asyncio.run(run())
 
 
+def install_continue_command(args):
+    """Register world-model-mcp as an MCP server in Continue.
+
+    Writes a standalone YAML file at
+    <project-dir>/.continue/mcpServers/world-model.yaml, matching
+    Continue's documented per-server-file pattern. No config merge is
+    needed because Continue expects one YAML per MCP server in that
+    directory — we own the whole file.
+
+    Defaults --python to sys.executable (absolute path). Rejects relative
+    --python overrides as a hard error, matching the OpenClaw and Hermes
+    adapters. No ruamel.yaml dependency needed because we author the
+    file end-to-end (no comment preservation problem to solve).
+    """
+    project_dir = Path(args.project_dir).resolve()
+    mcp_servers_dir = project_dir / ".continue" / "mcpServers"
+    target = mcp_servers_dir / "world-model.yaml"
+
+    python_bin = args.python or sys.executable
+    if not Path(python_bin).is_absolute():
+        console.print(
+            f"[red]--python must be an absolute path (got: {python_bin!r}).[/red]\n"
+            "Continue may not inherit shell PATH when spawning stdio MCP "
+            "servers; a relative interpreter name is not safe."
+        )
+        sys.exit(1)
+
+    db_path = args.db_path or ".claude/world-model"
+
+    yaml_body = (
+        "name: world-model-mcp\n"
+        "version: 0.1.0\n"
+        "schema: v1\n"
+        "mcpServers:\n"
+        "  - name: world-model\n"
+        "    type: stdio\n"
+        f"    command: {python_bin}\n"
+        "    args:\n"
+        "      - -m\n"
+        "      - world_model_server.server\n"
+        "    env:\n"
+        f"      WORLD_MODEL_DB_PATH: {db_path}\n"
+    )
+
+    if target.exists() and not args.force:
+        console.print(
+            f"[yellow]Continue adapter already present at {target}[/yellow]\n"
+            "Use --force to overwrite the existing file."
+        )
+        return
+
+    if args.dry_run:
+        console.print(f"[bold]Would write to:[/bold] {target}")
+        console.print("\n--- proposed world-model.yaml ---\n")
+        console.print(yaml_body)
+        return
+
+    mcp_servers_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(yaml_body)
+
+    console.print("[green]Continue adapter installed[/green]")
+    console.print(f"  Wrote {target}")
+    console.print(f"  command: {python_bin}")
+    console.print(f"  WORLD_MODEL_DB_PATH: {db_path}")
+    console.print(
+        "\nNext: reload the Continue extension (reopen the VS Code / JetBrains\n"
+        "window, or reload the extension) so it picks up the new server.\n"
+        "Then open agent mode and confirm world-model tools are visible."
+    )
+
+
 def install_codex_command(args):
     """Wire world-model-mcp into Codex CLI by appending to ~/.codex/config.toml.
 
@@ -1056,6 +1127,36 @@ def main():
         help="Print what would be appended without writing",
     )
     codex_parser.set_defaults(func=install_codex_command)
+
+    continue_parser = subparsers.add_parser(
+        "install-continue",
+        help="Wire world-model-mcp into Continue by writing .continue/mcpServers/world-model.yaml",
+    )
+    continue_parser.add_argument(
+        "--project-dir", type=str, default=".",
+        help="Project directory to install into (default: current directory)",
+    )
+    continue_parser.add_argument(
+        "--python", type=str, default=None,
+        help=(
+            "Absolute path to the python3 that has world-model-mcp installed. "
+            "Default: sys.executable (the interpreter running this CLI). "
+            "Relative values are rejected."
+        ),
+    )
+    continue_parser.add_argument(
+        "--db-path", type=str, default=None,
+        help="WORLD_MODEL_DB_PATH env value for the MCP server (default: .claude/world-model)",
+    )
+    continue_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite the existing world-model.yaml file if present",
+    )
+    continue_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the YAML that would be written without touching disk",
+    )
+    continue_parser.set_defaults(func=install_continue_command)
 
     status_watch_parser = subparsers.add_parser(
         "status-watch",

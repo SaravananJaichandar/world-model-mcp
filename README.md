@@ -204,6 +204,19 @@ python -m world_model_server.cli install-codex
 
 `--dry-run` prints what would be appended without writing; `--force` re-appends even if the adapter marker is already present. The bundled snippet uses `world_model` (underscore) as the MCP server name to dodge Codex's silent hyphen-strip in its tool-name sanitizer. Hook output is camelCase with `deny_unknown_fields` compliance against Codex's strict Rust schema; the contract is locked down by tests in `tests/test_v075_features.py`. See [adapters/codex/README.md](adapters/codex/README.md).
 
+### Option 7: Run inside Continue (experimental, v0.10)
+
+For users of [Continue](https://github.com/continuedev/continue), the OSS coding-agent extension for VS Code and JetBrains (largest OSS coding-agent extension not tied to a platform vendor — reprioritized after the SpaceX/Cursor acquisition):
+
+```bash
+pip install world-model-mcp
+python -m world_model_server.cli setup
+python -m world_model_server.cli install-continue
+# Reload the Continue extension. In agent mode, world-model tools appear under the "world-model" server.
+```
+
+`install-continue` writes a standalone `<project>/.continue/mcpServers/world-model.yaml` following Continue's per-server-file pattern. No config merge is needed because Continue's own docs use one YAML per MCP server in that directory. Defaults the `command` field to `sys.executable` (absolute path); rejects relative `--python` overrides. Flags: `--force`, `--dry-run`, `--project-dir <path>`, `--python <abs-path>`, `--db-path <path>`. Continue watches `.continue/mcpServers/` in newer builds, so auto-discovery should pick up the new server; if not, reload the extension. MCP tools are available only in Continue's agent mode. See [adapters/continue/README.md](adapters/continue/README.md).
+
 ### What Gets Installed
 
 ```
@@ -620,15 +633,17 @@ v0.7.3 added anonymous usage telemetry. It is:
 ### v0.9.2 (Shipped 2026-06-30) — Multi-seed replication appendix
 - [x] Pre-registered 17-instance multi-seed test per `benchmarks/repeat-mistake/SEED_PLAN.md` (locked 2026-06-25). Outcome: load-bearing replication 0 of 7; mean paired delta across two seeds is +0.24 per instance, bootstrap 95 percent CI [0.00, 0.47]. The v0.9 +10.2 pts headline was substantially attributable to an unlucky baseline draw. Honest update published per the pre-registered acceptance criteria. Appendix in `RESULTS.md` and `paper.md`. Zenodo record updated to version 2.
 
-### v0.10 (Next, in design)
+### v0.10 (In progress)
+- [x] **Continue adapter (MCP registration) + `install-continue` CLI**. Registers world-model-mcp as an MCP tool source inside [Continue](https://github.com/continuedev/continue) (VS Code + JetBrains) via `python -m world_model_server.cli install-continue`. Writes a standalone `<project>/.continue/mcpServers/world-model.yaml` following Continue's per-server-file pattern — no config merge needed. Defaults `command` to `sys.executable` (absolute), rejects relative `--python`, supports `--project-dir` / `--force` / `--dry-run` / `--db-path`. CLI-side E2E verified: the exact stdio spawn Continue would perform returns 27 tools via a live `tools/list` roundtrip. Last-mile "does Continue's LLM actually see the tools in agent mode" verification requires a live VS Code / JetBrains session. See [`adapters/continue/`](./adapters/continue/).
 - [ ] Full-corpus multi-seed replication: all 49 paired instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only). The 17-instance subset surfaced the variance signal; the full-corpus run quantifies it across the entire benchmark.
 - [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
-- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram).
+- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram, ClawMem).
 - [ ] Explicit failure-mode-similarity scoring to predict when cross-domain transfer will succeed.
 - [ ] `auto` strategy rewrite to fold in `confirmer` + decay awareness (should lift the v0.8.1 contradiction-resolution benchmark's auto score from 77.1% past 90%).
 - [ ] Antigravity CLI adapter (held pending a `TransformCompactionHook` in the SDK for the load-bearing memory-injection contract).
 - [ ] MCP spec readiness for upcoming spec versions (stateless transport, `_meta` headers, `InputRequiredResult`).
 - [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
+- [ ] Windsurf adapter.
 
 ---
 
