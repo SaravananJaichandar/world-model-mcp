@@ -1,5 +1,52 @@
 # World Model MCP - Release Notes
 
+## v0.11.0 (July 2026)
+
+Depth release. v0.10 expanded surface area to seven runtimes; v0.11 solves real problems for the users we now have rather than adding more surfaces. Four things ship: a `auto` contradiction-resolution strategy rewrite (77.1% → 100.0% on the v0.8.1 benchmark), a Hermes native `MemoryProvider` plugin that intercepts writes at Hermes' routing layer, a content-type schema field (`rule` / `fact` / `procedure`) for future routing intelligence, and a dogfooding case study with a reproducibility contract.
+
+### What this release IS about
+
+Two signals shaped v0.11:
+
+1. **The [Hermes #47349 exchange (2026-07-01)](https://github.com/NousResearch/hermes-agent/issues/47349)** with @TechFlipsi surfaced that the v0.10 MCP adapter, though useful, could not close the "agent still defaults to writing `MEMORY.md`" problem. MCP surfaces tools; the LLM still chooses when to call them. Only a `MemoryProvider` plugin — Hermes' write-side interception layer — can force routing. This release ships that plugin.
+
+2. **The `auto` contradiction-resolution strategy** on the v0.8.1 benchmark still scored 77.1% because it did not fully consume the `confirmer` + decay-awareness fields shipped in v0.8.0. This release rewrites it to score 100.0% on the same dataset.
+
+Both are engineering investments in the existing user base rather than new-runtime coverage.
+
+### What is new in v0.11.0
+
+- **v0.11.0 A: `auto` strategy rewrite in `resolve_contradiction`.** Confirmer-aware + decay-aware + tie-detection. Lifts the v0.8.1 contradiction-resolution benchmark's `auto` score from 77.1% to 100.0% on the same 105-pair × 19-category dataset. Overall benchmark accuracy across four canonical strategies + the decayed strategy rises from 78.2% to 83.7%. Non-auto strategies unchanged. `keep_higher_confidence_decayed` promoted from benchmark-only to a first-class option in `pick_winner`. Rule order in the meta-strategy: (1) Settled beats pending when one fact has `confirmer` set and the other doesn't (13 pairs). (2) Decay-aware confidence when `evidence_type` is present (16 pairs). (3) Fall-through with tie-detection: source-count with distinct-tools counting, user-source priority at tied count, confidence gap ≥ 0.1 with 0.0-value guard, recency gap ≥ 2 days. Below all thresholds, return `None` for manual review instead of picking arbitrarily.
+
+- **v0.11.0 B: Hermes native `MemoryProvider` plugin + `install-hermes-provider` CLI.** Python plugin implementing Hermes' `agent/memory_provider.py` ABC. Intercepts writes at the routing layer, not at the tool surface — the architectural distinction the v0.10 MCP adapter could not close. Seven surfaced tools (`query_fact`, `get_constraints`, `get_injection_context`, `record_event`, `record_correction`, `find_contradictions`, `resolve_contradiction`) — trimmed from the 27 MCP tools to keep Hermes' tool namespace focused. Soft ABC import (falls back to `object` when Hermes is not installed) so the plugin file imports on test machines. Sync ↔ async bridge via per-call event loop. Config constructed directly (`Config(db_path=...)`) not via `from_env` so the plugin does not pollute `os.environ`. Ships as `world_model_server/hermes_memory_provider/` in the wheel; `install-hermes-provider` copies the plugin into `<hermes_home>/plugins/memory/world-model/` with `--hermes-home` / `--force` / `--dry-run`. Optional Hermes hooks are v0.12 follow-ups.
+
+- **v0.11.1: content-type routing schema field.** Nullable `content_type: Optional[Literal["rule", "fact", "procedure"]]` on the `Fact` model and the facts table. Additive-only migration behind an existence check; existing rows keep NULL and continue to work; the migration is idempotent. Index `idx_facts_content_type` created for future routing filters. Distinct from `evidence_type` (which describes where the fact came from) — `content_type` describes what shape of content the fact carries, so a MemoryProvider can route writes intelligently rather than dumping everything into one destination. Consumers (query filters, MemoryProvider write routing) are v0.11.x follow-ups; this release ships the schema field, tests, and migration only.
+
+- **v0.11.2: dogfooding case study.** Publishes what the fact graph actually captured about the world-model-mcp codebase in `.claude/world-model/`. 608 facts (607 from the seeder + 1 real `bug_fix` reflection), 600 entities, 3 learned constraints with real violation counts. Two constraints (`check-twine-before-tag`, `tag-before-upload`) map directly to release-mechanics incidents from v0.9.1 and v0.10.1 — evidence that the memory layer captured the maintainer's own past mistakes. **Honest about what was NOT captured**: `events` / `decisions` / `sessions` tables are empty because `.mcp.json` was missing from the repo root during v0.10 / v0.11 development. The case study reports this explicitly rather than hiding it. Reproducibility contract: `python scripts/dogfooding_snapshot.py --db-path .claude/world-model --out /tmp/snap.json && diff -u case-studies/v011-dogfooding/snapshot.json /tmp/snap.json` should be empty on this release commit. Drift-protection tests (9 of them) fail if the writeup and the snapshot diverge.
+
+- **`.mcp.json` at repo root.** Small wiring fix landed during v0.11 development after the dogfooding investigation exposed the misconfiguration. Registers world-model-mcp as a project MCP server so future Claude Code sessions on this repo capture events / decisions / sessions rows through the normal capture path.
+
+### Test breakdown
+
+- v0.10: 417 tests
+- v0.11.0 A: no new tests (used the existing v0.8.1 benchmark as validation)
+- v0.11.0 B: +21 tests
+- v0.11.1: +10 tests
+- v0.11.2: +9 tests
+- **v0.11.0 total: 457/457 pass.** Zero regressions across four PRs.
+
+### What is unchanged
+
+- All v0.10.x code paths: 27 MCP tools reported by adapters (no new server-side tools), SWE-bench Verified benchmark + multi-seed appendix, seven-runtime adapter coverage.
+- The Zenodo preprint — paper unchanged since v0.9.2. **No new Zenodo version for v0.11.0.** Concept DOI `10.5281/zenodo.20834508` still resolves to v0.9.2 (Appendix A: multi-seed replication).
+- Wedge claims (lifecycle-hook capture, per-fact provenance, per-evidence-type decay, PreToolUse defer) survive unchanged.
+
+### Ship flow
+
+3-channel: PyPI + GitHub Release + MCP Registry. **No Zenodo update** — paper text is unchanged.
+
+---
+
 ## v0.10.1 (July 2026)
 
 Documentation patch. Fixes a stale Zenodo DOI reference in the README badge, the roadmap section, `paper.md`, and the OpenClaw adapter README. No code changes; no methodology changes; no schema changes.
