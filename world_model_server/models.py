@@ -380,7 +380,7 @@ class ContradictionResolution(BaseModel):
 
     fact_a_id: str
     fact_b_id: str
-    strategy: Literal["keep_higher_confidence", "keep_most_recent", "keep_most_sources", "supersede_a", "supersede_b", "manual"]
+    strategy: Literal["auto", "keep_higher_confidence", "keep_higher_confidence_decayed", "keep_most_recent", "keep_most_sources", "supersede_a", "supersede_b", "manual"]
     winner_id: Optional[str] = None
     loser_id: Optional[str] = None
     resolved_at: datetime = Field(default_factory=datetime.now)
