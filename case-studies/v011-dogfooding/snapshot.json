@@ -1,0 +1,139 @@
+{
+  "bug_fix_facts": [
+    {
+      "created_at": "2026-05-21T10:38:01.594070",
+      "evidence_path": "world_model_server/knowledge_graph.py:120-135",
+      "fact_text": "Bug fix: NULL content_hash backfill must run on every initialize() to cover post-migration inserts. Earlier code only backfilled when the column was created, which left merge_from rows un-hashed and broke dedup."
+    }
+  ],
+  "constraints": [
+    {
+      "constraint_type": "style",
+      "created_at": "2026-05-21T10:38:01.593194",
+      "description": "Run `python3 -m twine check dist/*` before tagging. Catches PyPI metadata errors before the tag is pushed; saves a retraction.",
+      "examples": "[{\"incorrect\": \"git tag -a v0.7.x\", \"correct\": \"python3 -m twine check dist/* && git tag -a v0.7.x\"}]",
+      "file_pattern": "*",
+      "last_violated": "2026-05-21T06:38:01.593169",
+      "rule_name": "check-twine-before-tag",
+      "severity": "warning",
+      "violation_count": 5
+    },
+    {
+      "constraint_type": "linting",
+      "created_at": "2026-05-21T10:38:01.591070",
+      "description": "Use logger.debug() not console.log() in TypeScript source. Production logs route through pino; console.log bypasses formatting and breaks downstream parsers.",
+      "examples": "[{\"incorrect\": \"console.log\", \"correct\": \"logger.debug\"}]",
+      "file_pattern": "*.ts",
+      "last_violated": "2026-05-21T04:38:01.590191",
+      "rule_name": "no-console-log",
+      "severity": "error",
+      "violation_count": 5
+    },
+    {
+      "constraint_type": "style",
+      "created_at": "2026-05-21T10:38:01.592246",
+      "description": "Always run git tag + git push --tags before twine upload. PyPI is permanent; an untagged upload pins a wheel to no git ref.",
+      "examples": "[{\"incorrect\": \"twine upload dist/*\", \"correct\": \"git tag -a v0.7.x && git push --tags && twine upload dist/*\"}]",
+      "file_pattern": "*",
+      "last_violated": "2026-05-19T10:38:01.592211",
+      "rule_name": "tag-before-upload",
+      "severity": "warning",
+      "violation_count": 2
+    }
+  ],
+  "db_dir": "/Users/saravananjaichandaran/claude context graph/world-model-mcp/.claude/world-model",
+  "entities_by_type": {
+    "class": 31,
+    "constraint": 2,
+    "file": 46,
+    "function": 521
+  },
+  "facts_by_evidence_type": {
+    "bug_fix": 1,
+    "source_code": 607
+  },
+  "facts_by_source_tool": {
+    "NULL": 608
+  },
+  "facts_by_status": {
+    "canonical": 608
+  },
+  "facts_by_top_file": [
+    {
+      "count": 60,
+      "file": "world_model_server/knowledge_graph.py"
+    },
+    {
+      "count": 51,
+      "file": "tests/test_v050_features.py"
+    },
+    {
+      "count": 42,
+      "file": "tests/test_v070_features.py"
+    },
+    {
+      "count": 40,
+      "file": "tests/test_v060_features.py"
+    },
+    {
+      "count": 39,
+      "file": "tests/test_v030_features.py"
+    },
+    {
+      "count": 38,
+      "file": "tests/test_v040_features.py"
+    },
+    {
+      "count": 31,
+      "file": "world_model_server/tools.py"
+    },
+    {
+      "count": 20,
+      "file": "world_model_server/models.py"
+    },
+    {
+      "count": 19,
+      "file": "world_model_server/cli.py"
+    },
+    {
+      "count": 18,
+      "file": "world_model_server/extraction.py"
+    },
+    {
+      "count": 18,
+      "file": "world_model_server/pr_reviews.py"
+    },
+    {
+      "count": 17,
+      "file": "tests/test_seeder.py"
+    },
+    {
+      "count": 16,
+      "file": "tests/test_v072_http_transport.py"
+    },
+    {
+      "count": 14,
+      "file": "world_model_server/seeder.py"
+    },
+    {
+      "count": 13,
+      "file": "tests/test_knowledge_graph.py"
+    }
+  ],
+  "facts_settled_vs_pending": {
+    "pending": 608,
+    "settled": 0
+  },
+  "facts_time_range": {
+    "first": "2026-05-21T10:15:31.216836",
+    "last": "2026-05-21T10:38:01.604265"
+  },
+  "totals": {
+    "constraints": 3,
+    "decisions": 0,
+    "entities": 600,
+    "events": 0,
+    "facts": 608,
+    "sessions": 0
+  }
+}
