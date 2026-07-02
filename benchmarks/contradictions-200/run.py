@@ -46,7 +46,11 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from world_model_server.contradictions import pick_winner, suggest_strategy  # noqa: E402
+from world_model_server.contradictions import (  # noqa: E402
+    _pick_winner_auto,
+    pick_winner,
+    suggest_strategy,
+)
 from world_model_server.decay import compute_decayed_confidence  # noqa: E402
 
 
@@ -93,52 +97,17 @@ def _materialize_fact(spec: dict) -> dict:
 
 
 def _pick_winner_with_decay(strategy: str, fact_a: dict, fact_b: dict) -> str | None:
-    """Like ``pick_winner`` but applies v0.8.0 decay before scoring.
+    """Dispatch to the shipped ``world_model_server.contradictions`` code.
 
-    For ``keep_higher_confidence_decayed``, decays each fact's confidence
-    using its ``evidence_type`` and ``valid_at``, then picks the higher.
-    For ``auto`` when ``evidence_type`` is present, prefers settled facts
-    (``confirmer != NULL``) before falling back to decayed confidence.
+    v0.11: The auto strategy is now implemented in
+    ``contradictions._pick_winner_auto`` (confirmer-aware + decay-aware +
+    tie-detection). This runner delegates to the shipped code rather than
+    reimplementing the logic locally, so the benchmark measures the actual
+    product. The decayed strategy also lives in ``pick_winner`` since v0.11.
     """
-    if strategy == DECAYED_STRATEGY:
-        conf_a = compute_decayed_confidence(
-            fact_a.get("confidence", 1.0),
-            fact_a.get("evidence_type"),
-            fact_a.get("valid_at"),
-        )
-        conf_b = compute_decayed_confidence(
-            fact_b.get("confidence", 1.0),
-            fact_b.get("evidence_type"),
-            fact_b.get("valid_at"),
-        )
-        if abs(conf_a - conf_b) < 0.05:
-            return None
-        return "a" if conf_a > conf_b else "b"
-
     if strategy == "auto":
-        a_settled = (
-            fact_a.get("confirmer") is not None
-            and fact_a.get("evidence_type") == "user_correction"
-        )
-        b_settled = (
-            fact_b.get("confirmer") is not None
-            and fact_b.get("evidence_type") == "user_correction"
-        )
-        if a_settled and not b_settled:
-            return "a"
-        if b_settled and not a_settled:
-            return "b"
-
-        if (
-            fact_a.get("evidence_type") is not None
-            or fact_b.get("evidence_type") is not None
-        ):
-            decayed = _pick_winner_with_decay(DECAYED_STRATEGY, fact_a, fact_b)
-            if decayed is not None:
-                return decayed
-
-        return pick_winner(suggest_strategy(fact_a, fact_b), fact_a, fact_b)
-
+        winner, _tier = _pick_winner_auto(fact_a, fact_b)
+        return winner
     return pick_winner(strategy, fact_a, fact_b)
 
 
