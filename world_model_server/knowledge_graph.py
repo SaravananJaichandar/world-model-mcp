@@ -155,6 +155,18 @@ class KnowledgeGraph:
                 await db.execute(
                     "ALTER TABLE facts ADD COLUMN last_decay_at TIMESTAMP"
                 )
+            # v0.11.1: content-type axis for routing rules vs facts vs
+            # procedures. NULL default = legacy row / unclassified; no
+            # backfill. See adapters/hermes-memory-provider/README.md and
+            # the write-side routing discussion in Hermes #47349 for the
+            # architectural motivation.
+            if "content_type" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN content_type TEXT"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_content_type ON facts(content_type)"
+                )
             # Always backfill any NULL content_hash rows (covers post-migration inserts too)
             cursor = await db.execute(
                 "SELECT id, fact_text, evidence_path FROM facts WHERE content_hash IS NULL"
