@@ -743,6 +743,59 @@ def install_openclaw_command(args):
     )
 
 
+def install_hermes_provider_command(args):
+    """Install the world-model MemoryProvider plugin into Hermes' plugin dir.
+
+    Copies the bundled ``hermes_memory_provider`` package files into
+    ``<hermes_home>/plugins/memory/world-model/``. The plugin then imports
+    ``world_model_server`` from site-packages at Hermes runtime, so the
+    fact graph, decay function, and contradiction-resolution logic are
+    the same code as the v0.10 MCP adapter — no divergence between
+    the two integration paths.
+    """
+    import shutil
+
+    hermes_home = Path(args.hermes_home).expanduser().resolve() if args.hermes_home else (
+        Path.home() / ".hermes"
+    )
+    target_dir = hermes_home / "plugins" / "memory" / "world-model"
+
+    pkg_root = Path(__file__).parent
+    src_dir = pkg_root / "hermes_memory_provider"
+    src_files = ("__init__.py", "plugin.yaml", "README.md")
+
+    for filename in src_files:
+        src = src_dir / filename
+        if not src.exists():
+            console.print(f"[red]Missing bundled plugin file: {src}[/red]")
+            sys.exit(1)
+
+    if target_dir.exists() and not args.force:
+        console.print(
+            f"[yellow]Hermes MemoryProvider plugin already present at {target_dir}[/yellow]\n"
+            "Use --force to overwrite the existing plugin directory."
+        )
+        return
+
+    if args.dry_run:
+        console.print(f"[bold]Would copy plugin files to:[/bold] {target_dir}")
+        for filename in src_files:
+            console.print(f"  - {filename}  ({(src_dir / filename).stat().st_size} bytes)")
+        return
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for filename in src_files:
+        shutil.copyfile(src_dir / filename, target_dir / filename)
+
+    console.print("[green]Hermes MemoryProvider plugin installed[/green]")
+    console.print(f"  Copied plugin files to {target_dir}")
+    console.print(
+        "\nNext: restart Hermes (or reload plugins from an active session)\n"
+        "and verify with:\n  hermes plugin list\n"
+        "The 'world-model' provider should appear under the memory plugins."
+    )
+
+
 def install_hermes_command(args):
     """Register world-model-mcp as an MCP server in Hermes Agent's config.
 
@@ -1384,6 +1437,27 @@ def main():
         help="Print what would be written without modifying the config file",
     )
     hermes_parser.set_defaults(func=install_hermes_command)
+
+    hermes_provider_parser = subparsers.add_parser(
+        "install-hermes-provider",
+        help=(
+            "Install the world-model MemoryProvider plugin into "
+            "~/.hermes/plugins/memory/world-model/"
+        ),
+    )
+    hermes_provider_parser.add_argument(
+        "--hermes-home", type=str, default=None,
+        help="Override the Hermes state directory (default: ~/.hermes)",
+    )
+    hermes_provider_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an existing world-model plugin directory",
+    )
+    hermes_provider_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print what would be copied without touching disk",
+    )
+    hermes_provider_parser.set_defaults(func=install_hermes_provider_command)
 
     continue_parser = subparsers.add_parser(
         "install-continue",
