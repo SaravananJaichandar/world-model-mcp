@@ -52,13 +52,20 @@ def setup_command(args):
     # Generate settings.json with correct hook paths
     settings_path = claude_dir / "settings.json"
     if not settings_path.exists():
+        # $CLAUDE_PROJECT_DIR is expanded at shell time. It MUST be double-
+        # quoted or the value gets split on whitespace when the project
+        # path contains spaces (e.g. macOS ~/Documents/... or any repo
+        # cloned under a folder with a space in the name). Before v0.11.0
+        # this was unquoted; any user whose project path had a space
+        # silently got zero hook captures. See v0.11.2 dogfooding case
+        # study for the diagnosis trail.
         settings = {
             "hooks": {
                 "PostToolUse": [{
                     "matcher": "Edit|Write|Bash|Read",
                     "hooks": [{
                         "type": "command",
-                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-capture.js",
+                        "command": 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/world-model-capture.js"',
                         "timeout": 10,
                     }],
                 }],
@@ -66,7 +73,7 @@ def setup_command(args):
                     "matcher": "Edit|Write",
                     "hooks": [{
                         "type": "command",
-                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-validate.js",
+                        "command": 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/world-model-validate.js"',
                         "timeout": 8,
                     }],
                 }],
@@ -74,7 +81,7 @@ def setup_command(args):
                     "matcher": "*",
                     "hooks": [{
                         "type": "command",
-                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js start",
+                        "command": 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js" start',
                         "timeout": 5,
                     }],
                 }],
@@ -82,7 +89,7 @@ def setup_command(args):
                     "matcher": "*",
                     "hooks": [{
                         "type": "command",
-                        "command": "node $CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js end",
+                        "command": 'node "$CLAUDE_PROJECT_DIR/.claude/hooks/world-model-session.js" end',
                         "timeout": 10,
                     }],
                 }],
