@@ -1,5 +1,35 @@
 # World Model MCP - Release Notes
 
+## v0.10.1 (July 2026)
+
+Documentation patch. Fixes a stale Zenodo DOI reference in the README badge, the roadmap section, `paper.md`, and the OpenClaw adapter README. No code changes; no methodology changes; no schema changes.
+
+### What this fixes
+
+The Zenodo record for the SWE-bench Verified paper has two DOIs per version: a **version DOI** (immutable, points to a specific version) and a **concept DOI** (auto-resolves to whichever version is latest). Prior to this patch, everywhere the repo referred to "10.5281/zenodo.20834509" as the "Zenodo concept DOI", it was in fact the version DOI for version 1 (v0.9.1) of the record. Readers clicking the README's DOI badge landed on the pre-multi-seed paper, not on v0.9.2 which has Appendix A.
+
+The correct concept DOI (verified against the Zenodo API on 2026-07-01) is **10.5281/zenodo.20834508**. This patch replaces every reference to `20834509` in the repo with `20834508` so the badge, roadmap entry, `paper.md` header, and OpenClaw adapter README all point at the concept DOI that auto-resolves to the latest published version.
+
+### DOI map (for reference)
+
+| Reference | DOI |
+|---|---|
+| Concept DOI (auto-resolves to latest) | `10.5281/zenodo.20834508` |
+| Version 1 (v0.9.1, published 2026-06-24) | `10.5281/zenodo.20834509` |
+| Version 2 (v0.9.2, published 2026-06-30) | `10.5281/zenodo.21076824` |
+
+### What is unchanged
+
+- All v0.10.0 code paths: 27 MCP tools, 22 CLI subcommands, 417 tests, the three v0.10 adapters (OpenClaw, Hermes, Continue).
+- Paper content is unchanged from v0.9.2. `paper.pdf` is regenerated only to correct the front-matter DOI line.
+- No Zenodo upload is needed for v0.10.1 because the paper text is unchanged — only the DOI reference in repo prose is corrected.
+
+### Ship flow
+
+3-channel: PyPI + GitHub Release + MCP Registry. Skip Zenodo.
+
+---
+
 ## v0.10.0 (July 2026)
 
 Adapter-surface release. Three new adapters ship in one release, extending the harness-neutral memory story from four runtimes to seven: **OpenClaw**, **Hermes Agent**, and **Continue**. Each is verified end-to-end against a live installation of the target runtime. No server-side code changes; no schema changes; no benchmark methodology changes.
@@ -32,7 +62,7 @@ Cross-runtime memory has been the central v0.10 thesis since the roadmap locked 
 
 ### What is unchanged
 
-- All v0.9.2 code paths: the 26 base MCP tools (no new server-side tools in v0.10; the "27 tools" count reported by adapters includes `resolve_contradiction` from v0.8.0), the SWE-bench Verified benchmark, the multi-seed replication appendix, the paper and preprint on Zenodo (10.5281/zenodo.20834509).
+- All v0.9.2 code paths: the 26 base MCP tools (no new server-side tools in v0.10; the "27 tools" count reported by adapters includes `resolve_contradiction` from v0.8.0), the SWE-bench Verified benchmark, the multi-seed replication appendix, the paper and preprint on Zenodo (10.5281/zenodo.20834508).
 - The wedge claims at the architectural level (lifecycle-hook capture, per-fact provenance, per-evidence-type decay, PreToolUse defer).
 - The multi-seed-honesty framing from v0.9.2: the v0.9 +10.2 pts paired delta remains published as a single-trial upper bound.
 
@@ -76,7 +106,7 @@ The wedge claims at the architectural level (lifecycle-hook-based memory capture
 
 - All v0.9.1 code: 26 MCP tools, 19 CLI subcommands, 375 tests, opt-in telemetry.
 - All v0.9 benchmark methodology and per-task tables in the main body of RESULTS.md and paper.md. The single-trial v0.9 numbers are preserved verbatim; the appendix adds the multi-seed evidence that bounds them.
-- The v0.9 Zenodo preprint (DOI 10.5281/zenodo.20834509) — the concept DOI resolves to the latest version; v0.9.2 ships as a new version of the same record.
+- The v0.9 Zenodo preprint (DOI 10.5281/zenodo.20834508) — the concept DOI resolves to the latest version; v0.9.2 ships as a new version of the same record.
 
 ### Honest framing
 
