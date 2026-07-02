@@ -98,6 +98,23 @@ class Fact(BaseModel):
             "computed on next read."
         ),
     )
+    # v0.11.1: content-type routing axis. Distinct from evidence_type
+    # (which describes where the fact came from) — content_type
+    # describes what shape of content this fact carries, so a
+    # MemoryProvider can route writes intelligently:
+    #   rule       — always-inject constraint (e.g., "always await async")
+    #   fact       — search-on-demand knowledge (e.g., "endpoint /users needs JWT")
+    #   procedure  — multi-step workflow (e.g., a runbook or skill definition)
+    # NULL = legacy row / unclassified. NULL-tolerant on read; existing
+    # code paths ignore it. See adapters/hermes-memory-provider/README.md.
+    content_type: Optional[Literal["rule", "fact", "procedure"]] = Field(
+        None,
+        description=(
+            "Content-type routing axis: 'rule' (always-inject), 'fact' "
+            "(search-on-demand), 'procedure' (multi-step workflow). NULL = "
+            "unclassified; write paths do not require this field."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
