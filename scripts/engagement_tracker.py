@@ -46,6 +46,10 @@ THREADS: list[tuple[str, int, int, str]] = [
     ("openai/codex",                  21753,  4852053665, "Full Claude Code hook parity"),
     ("anthropics/claude-code",        14227,  4852055776, "Persistent Memory Between Sessions"),
     ("anthropics/claude-code",        30039,  4852057251, "Native Context Graph"),
+
+    # v0.11.0 ship notification on the Hermes thread where the plugin was
+    # specifically motivated (@TechFlipsi pushback + our follow-up).
+    ("NousResearch/hermes-agent",     47349,  4869758223, "MemoryProvider plugin shipped (v0.11.0)"),
 ]
 
 
