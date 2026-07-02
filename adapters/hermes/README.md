@@ -168,21 +168,26 @@ python -m world_model_server.cli install-hermes \
 The MCP-only integration ships in v0.10. Two follow-ups on the
 roadmap:
 
-**v0.10.x — Native `MemoryProvider` plugin package.** Implement the
+**v0.11 planned — Native `MemoryProvider` plugin package.** Implement the
 Hermes `agent/memory_provider.py` ABC (`initialize`,
 `get_tool_schemas`, `handle_tool_call`, `get_config_schema`,
 `save_config`) as a proper Python plugin so world-model-mcp can
 occupy the exclusive external-memory-provider slot when the user
 chooses it over ClawMem or other MemoryProvider implementations.
-Will ship only if MCP-route adoption justifies the plugin work.
+**Priority bumped from conditional to planned after Hermes #47349
+(2026-07-01) surfaced the write-side routing gap.** MCP surfaces
+tools but cannot intercept writes; only a MemoryProvider can. Ships
+alongside the v0.11 content-type routing schema (rules / facts /
+procedures) so the plugin has an intelligent routing rule for each
+write, not just a single store.
 
-**v0.10.x — Lifecycle hook integration.** Hermes exposes typed
+**v0.11+ — Lifecycle hook integration.** Hermes exposes typed
 hooks (`pre_tool_call`, `post_tool_call`, `on_session_start`,
 `on_session_end`, `on_pre_compress`, ...). Wiring these gives
 Hermes the same PreToolUse-defer, PostCompact-inject, and
 SessionStart-warm behavior the Claude Code and Cursor adapters
 ship. Requires either an MCP-side extension or a native Hermes
-plugin; will be scoped after the MemoryProvider plugin decision.
+plugin; will land after the MemoryProvider plugin.
 
 ## Caveats
 
@@ -218,6 +223,20 @@ plugin; will be scoped after the MemoryProvider plugin decision.
   register the server with the Hermes HTTP transport shape instead:
   drop `command`/`args`/`env`, add `url:` and `transport:
   streamable-http` (or `sse`).
+- **Write-side routing limitation.** The MCP adapter surfaces 27
+  world-model tools to Hermes agent turns, but the agent still
+  chooses whether to call `assert_fact` (world-model) or write to
+  `MEMORY.md` (Hermes' native store). We cannot force routing from
+  the MCP side — MCP is a tool-surface protocol, not a write
+  interception protocol. If your workflow requires `MEMORY.md` to
+  stop being the agent's default write target, that is a Hermes-
+  side config or plugin change (see the `mcp_servers` routing
+  discussion in [Hermes #47349](https://github.com/NousResearch/hermes-agent/issues/47349)).
+  The world-model-mcp `MemoryProvider` plugin planned for v0.11
+  addresses this: it implements Hermes' `agent/memory_provider.py`
+  ABC, which intercepts writes at Hermes' routing layer before the
+  agent picks a destination. That is where the "agent overuses
+  `MEMORY.md`" problem is architecturally solvable.
 
 ## Reporting issues
 
