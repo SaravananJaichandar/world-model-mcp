@@ -707,17 +707,29 @@ Depth release. v0.10 expanded surface area to seven runtimes; v0.11 solves real 
 
 ### v0.12+ (Backlog)
 
-- [ ] `world-model doctor` command that detects "hooks wired but no `.mcp.json`" and other misconfigurations that cause the capture path to silently degrade to zero writes. Sourced from the v0.11.2 dogfooding investigation.
-- [ ] Full-corpus multi-seed replication: all 49 paired SWE-bench Verified instances at 3-5 seeds (the v0.9.2 update covers a 17-instance subset only).
-- [ ] Larger task counts per repo; broader corpus coverage beyond the 50-task subset.
-- [ ] Head-to-head benchmarks against other memory layers (mem0, Letta, Zep, piia-engram, ClawMem).
-- [ ] Explicit failure-mode-similarity scoring to predict when cross-domain transfer will succeed.
-- [ ] Antigravity CLI adapter (held pending a `TransformCompactionHook` in the SDK for the load-bearing memory-injection contract).
-- [ ] MCP spec readiness for upcoming spec versions (stateless transport, `_meta` headers, `InputRequiredResult`).
-- [ ] Cline adapter (lower urgency after they shipped global AGENTS rules in v3.86).
-- [ ] Windsurf adapter.
-- [ ] OpenClaw TypeScript plugin bundle for typed lifecycle hooks — will ship only if MCP-only adoption justifies the plugin work.
-- [ ] Hermes lifecycle hook integration (`pre_tool_call`, `post_tool_call`, `on_session_start`, `on_session_end`, `on_pre_compress`). Layers on top of the v0.11.0 B MemoryProvider.
+Ordered by priority, not by size of the section they cover. The near-term items are cheap, well-motivated, and unblock user-visible value; the long-term items are expensive and only start to matter for a v1.0 push.
+
+**Near-term — do first:**
+
+- [ ] **`world-model doctor` command.** Detects the class of silent misconfigurations that produced the zero-capture state on this repo (hook commands failing with `MODULE_NOT_FOUND` from unquoted `$CLAUDE_PROJECT_DIR`, MCP tools reachable but not wired to a project, stale queue files, missing DB, etc.). Would have caught the v0.11.0 shell-quoting bug automatically. Sourced directly from the v0.11.2 dogfooding trace — highest priority.
+- [ ] **Continue `--global` config-merge path.** Deferred from v0.10. Merges into `~/.continue/config.yaml`'s top-level `mcpServers` array instead of writing a per-project standalone file. Would use `ruamel.yaml` round-trip mode (same pattern as `install-hermes`).
+- [ ] **Cline adapter.** VS Code extension pattern similar to Continue. Lower urgency after Cline shipped global AGENTS rules in v3.86; still worth the ~1-session cost.
+- [ ] **Windsurf adapter.** Codeium's fork with a growing user base.
+- [ ] **`content_type` consumers.** v0.11.1 shipped the schema field; v0.12 puts it to work in `query_fact` filters and the Hermes `MemoryProvider`'s `handle_tool_call` routing.
+
+**Medium-term — waits for a signal or opportunity:**
+
+- [ ] **OpenClaw TypeScript plugin bundle** for typed lifecycle hooks — will ship only if MCP-only adoption of the v0.10 OpenClaw adapter justifies the plugin work.
+- [ ] **Hermes lifecycle hook integration** (`sync_turn`, `on_pre_compress`, `prefetch`, `on_session_end`, `on_memory_write`). Layers on top of the v0.11.0 B `MemoryProvider`.
+- [ ] **Antigravity CLI adapter.** Blocked pending a `TransformCompactionHook` in the SDK for the load-bearing memory-injection contract; unblocks whenever the SDK ships it.
+- [ ] **MCP spec readiness** for upcoming spec versions (stateless transport, `_meta` headers, `InputRequiredResult`).
+
+**Long-term — v1.0 territory, expensive:**
+
+- [ ] **Full-corpus multi-seed replication** of the SWE-bench Verified benchmark: all 49 paired instances at 3-5 seeds each. The v0.9.2 update covers a 17-instance subset only. Cost is ~60 hours agent time; the honest bounds from v0.9.2 are already published, so the marginal empirical gain is smaller than the operational cost. Save for a v1.0 push.
+- [ ] **Head-to-head benchmarks** against other memory layers (mem0, Letta, Zep, piia-engram, ClawMem). Competitive-positioning value only; do it once, and only once the differentiators are stable enough that the head-to-head numbers are worth locking in.
+- [ ] **Explicit failure-mode-similarity scoring** to predict when cross-domain transfer will succeed. Research-heavy; needs the multi-seed data as a precondition.
+- [ ] **Larger task counts per repo; broader corpus coverage** beyond the 50-task subset.
 
 ---
 
