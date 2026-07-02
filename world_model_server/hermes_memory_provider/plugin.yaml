@@ -1,0 +1,14 @@
+name: world-model
+version: 0.11.0
+description: |
+  world-model-mcp as a Hermes Agent MemoryProvider. Intercepts writes
+  at the Hermes routing layer rather than surfacing tools the agent may
+  or may not call. Backed by the same fact graph, provenance schema,
+  and per-evidence-type decay function that ships in the v0.10 MCP
+  adapter. See https://github.com/SaravananJaichandar/world-model-mcp
+hooks:
+  - initialize
+  - get_tool_schemas
+  - handle_tool_call
+  - get_config_schema
+  - save_config
