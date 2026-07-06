@@ -58,6 +58,12 @@ THREADS: list[tuple[str, int, int, str]] = [
     ("github/copilot-cli",             4001,  4889297179, "settings.json hooks fail on Windows (doctor angle)"),
     ("github/copilot-cli",             3945,  4889297918, "Memories leaking between repositories (scoping angle)"),
     ("github/copilot-cli",             2930,  4889299165, "Local auto-memory (product-fit answer)"),
+
+    # v0.12.0 follow-up on the OpenClaw trust-tagging thread — @hegu-1 and
+    # @HMAKT99 pushed a storage-vs-influence split + expires_at in the
+    # replies to our v0.10 comment; both landed in v0.12.2. Comment
+    # describes what shipped without personal attribution.
+    ("openclaw/openclaw",              7707,  4889332307, "v0.12 update: influence_state + expires_at shipped"),
 ]
 
 
