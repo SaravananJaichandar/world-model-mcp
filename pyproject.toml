@@ -61,6 +61,7 @@ packages = ["world_model_server"]
 "world_model_server/adapters/codex/config.toml" = "world_model_server/adapters/codex/config.toml"
 "world_model_server/adapters/codex/hooks_snippet.toml" = "world_model_server/adapters/codex/hooks_snippet.toml"
 "world_model_server/adapters/openclaw/openclaw.json" = "world_model_server/adapters/openclaw/openclaw.json"
+"world_model_server/adapters/copilot/mcp.json" = "world_model_server/adapters/copilot/mcp.json"
 "world_model_server/adapters/hermes/config-snippet.yaml" = "world_model_server/adapters/hermes/config-snippet.yaml"
 "world_model_server/hermes_memory_provider/__init__.py" = "world_model_server/hermes_memory_provider/__init__.py"
 "world_model_server/hermes_memory_provider/plugin.yaml" = "world_model_server/hermes_memory_provider/plugin.yaml"

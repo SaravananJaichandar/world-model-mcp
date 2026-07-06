@@ -1053,6 +1053,101 @@ def install_codex_command(args):
     )
 
 
+def install_copilot_command(args):
+    """Register world-model-mcp with GitHub Copilot Chat in VS Code by
+    merging into ``.vscode/mcp.json``.
+
+    VS Code's Copilot Chat reads MCP servers from a top-level ``servers``
+    key (distinct from the ``mcpServers`` convention used by Claude Code,
+    Cursor, etc. — see .vscode/mcp.json docs). Users commonly already
+    have this file populated with other servers (github, playwright,
+    etc.), so this installer MERGES rather than overwrites: it parses
+    the existing JSON, adds a ``world-model`` entry under ``servers``,
+    and preserves every other key exactly.
+
+    Behavior matrix:
+      - file absent      -> write the full bundled template
+      - file present, no ``world-model`` under ``servers``
+                         -> merge our entry, preserve rest
+      - file present, ``world-model`` under ``servers`` already
+                         -> skip unless --force; --force overwrites
+                            just that one key
+      - file present, malformed JSON
+                         -> refuse to write; user must fix manually
+
+    Options:
+      --project-dir DIR  target project (default: cwd)
+      --force            overwrite an existing ``servers.world-model`` entry
+      --dry-run          print what would change without writing
+    """
+    import json
+
+    project_dir = Path(args.project_dir).resolve()
+    vscode_dir = project_dir / ".vscode"
+    target = vscode_dir / "mcp.json"
+
+    pkg_root = Path(__file__).parent
+    adapter_src = pkg_root / "adapters" / "copilot" / "mcp.json"
+    if not adapter_src.exists():
+        console.print(f"[red]Missing bundled adapter file: {adapter_src}[/red]")
+        sys.exit(1)
+
+    bundled = json.loads(adapter_src.read_text())
+    our_entry = bundled["servers"]["world-model"]
+
+    if target.exists():
+        try:
+            existing = json.loads(target.read_text())
+        except json.JSONDecodeError as e:
+            console.print(
+                f"[red]Refusing to touch malformed JSON at {target}: {e}[/red]\n"
+                "Fix the file by hand and re-run."
+            )
+            sys.exit(1)
+        if not isinstance(existing, dict):
+            console.print(
+                f"[red]Refusing to touch {target}: top-level value must be an object, "
+                f"got {type(existing).__name__}[/red]"
+            )
+            sys.exit(1)
+        servers = existing.get("servers")
+        if servers is not None and not isinstance(servers, dict):
+            console.print(
+                f"[red]Refusing to touch {target}: 'servers' must be an object, "
+                f"got {type(servers).__name__}[/red]"
+            )
+            sys.exit(1)
+        if servers is None:
+            existing["servers"] = {}
+            servers = existing["servers"]
+        if "world-model" in servers and not args.force:
+            console.print(
+                f"[yellow]world-model already registered in {target}[/yellow]\n"
+                "Use --force to overwrite that entry (other servers preserved)."
+            )
+            return
+        servers["world-model"] = our_entry
+        merged = existing
+    else:
+        merged = bundled
+
+    if args.dry_run:
+        console.print(f"[bold]Would write:[/bold] {target}")
+        console.print(json.dumps(merged, indent=2))
+        return
+
+    vscode_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(merged, indent=2) + "\n")
+
+    console.print(f"[green]Copilot adapter installed[/green]")
+    console.print(f"  + {target.relative_to(project_dir)}")
+    console.print(
+        "\nNext: reload the VS Code window (Cmd/Ctrl+Shift+P -> 'Developer: "
+        "Reload Window'). Verify Copilot picks up the server via "
+        "Cmd/Ctrl+Shift+P -> 'MCP: List Servers' -> 'world-model'."
+    )
+
+
 def install_pi_command(args):
     """Copy the pi adapter (index.ts, package.json) into ./adapters/world-model-pi/.
 
@@ -1356,6 +1451,24 @@ def main():
     cursor_parser.add_argument("--project-dir", type=str, default=".")
     cursor_parser.add_argument("--force", action="store_true", help="Overwrite existing files")
     cursor_parser.set_defaults(func=install_cursor_command)
+
+    copilot_parser = subparsers.add_parser(
+        "install-copilot",
+        help=(
+            "Register world-model with GitHub Copilot Chat in VS Code by "
+            "merging into .vscode/mcp.json (preserves other servers)"
+        ),
+    )
+    copilot_parser.add_argument("--project-dir", type=str, default=".")
+    copilot_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an existing 'servers.world-model' entry",
+    )
+    copilot_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the merged JSON that would be written; don't touch disk",
+    )
+    copilot_parser.set_defaults(func=install_copilot_command)
 
     pi_parser = subparsers.add_parser(
         "install-pi", help="Install the pi adapter to ./adapters/world-model-pi/"
