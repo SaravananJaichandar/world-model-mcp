@@ -1373,6 +1373,94 @@ def install_cline_command(args):
     )
 
 
+def install_windsurf_command(args):
+    """Register world-model-mcp with Windsurf's Cascade agent by merging
+    into ~/.codeium/windsurf/mcp_config.json.
+
+    Windsurf uses a top-level ``mcpServers`` mapping — same shape as
+    Cline / Cursor / Claude Code. The merge behavior is identical to
+    install-cline; the only real difference is the default config path.
+
+    Behavior:
+      absent file        -> write bundled template
+      no ours in file    -> add mcpServers.world-model, preserve rest
+      ours already there -> skip unless --force
+      --force            -> overwrite only mcpServers.world-model
+      malformed / wrong-shape JSON -> refuse, exit nonzero
+
+    Options:
+      --config-path PATH  override ~/.codeium/windsurf/mcp_config.json
+      --force             overwrite an existing mcpServers.world-model
+      --dry-run           print the merged JSON without writing
+    """
+    import json
+
+    config_path = Path(args.config_path).expanduser().resolve() if args.config_path else (
+        Path.home() / ".codeium" / "windsurf" / "mcp_config.json"
+    )
+
+    pkg_root = Path(__file__).parent
+    adapter_src = pkg_root / "adapters" / "windsurf" / "mcp_config.json"
+    if not adapter_src.exists():
+        console.print(f"[red]Missing bundled adapter file: {adapter_src}[/red]")
+        sys.exit(1)
+
+    bundled = json.loads(adapter_src.read_text())
+    our_entry = bundled["mcpServers"]["world-model"]
+
+    if config_path.exists():
+        try:
+            existing = json.loads(config_path.read_text())
+        except json.JSONDecodeError as e:
+            console.print(
+                f"[red]Refusing to touch malformed JSON at {config_path}: {e}[/red]\n"
+                "Fix the file by hand and re-run."
+            )
+            sys.exit(1)
+        if not isinstance(existing, dict):
+            console.print(
+                f"[red]Refusing to touch {config_path}: top-level value must be an object, "
+                f"got {type(existing).__name__}[/red]"
+            )
+            sys.exit(1)
+        servers = existing.get("mcpServers")
+        if servers is not None and not isinstance(servers, dict):
+            console.print(
+                f"[red]Refusing to touch {config_path}: 'mcpServers' must be an object, "
+                f"got {type(servers).__name__}[/red]"
+            )
+            sys.exit(1)
+        if servers is None:
+            existing["mcpServers"] = {}
+            servers = existing["mcpServers"]
+        if "world-model" in servers and not args.force:
+            console.print(
+                f"[yellow]world-model already registered in {config_path}[/yellow]\n"
+                "Use --force to overwrite that entry (other servers preserved)."
+            )
+            return
+        servers["world-model"] = our_entry
+        merged = existing
+    else:
+        merged = bundled
+
+    if args.dry_run:
+        console.print(f"[bold]Would write:[/bold] {config_path}")
+        console.print(json.dumps(merged, indent=2))
+        return
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(merged, indent=2) + "\n")
+
+    console.print(f"[green]Windsurf adapter installed[/green]")
+    console.print(f"  + {config_path}")
+    console.print(
+        "\nNext: from Windsurf run 'Windsurf: Refresh MCP Servers' via the "
+        "command palette, or restart Windsurf. world-model will appear in "
+        "the MCP servers panel."
+    )
+
+
 def install_pi_command(args):
     """Copy the pi adapter (index.ts, package.json) into ./adapters/world-model-pi/.
 
@@ -1715,6 +1803,27 @@ def main():
         help="Print the merged JSON that would be written; don't touch disk",
     )
     cline_parser.set_defaults(func=install_cline_command)
+
+    windsurf_parser = subparsers.add_parser(
+        "install-windsurf",
+        help=(
+            "Register world-model with Windsurf's Cascade agent by merging "
+            "into ~/.codeium/windsurf/mcp_config.json (preserves other servers)"
+        ),
+    )
+    windsurf_parser.add_argument(
+        "--config-path", type=str, default=None,
+        help="Override the default ~/.codeium/windsurf/mcp_config.json path",
+    )
+    windsurf_parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite an existing 'mcpServers.world-model' entry",
+    )
+    windsurf_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the merged JSON that would be written; don't touch disk",
+    )
+    windsurf_parser.set_defaults(func=install_windsurf_command)
 
     pi_parser = subparsers.add_parser(
         "install-pi", help="Install the pi adapter to ./adapters/world-model-pi/"
