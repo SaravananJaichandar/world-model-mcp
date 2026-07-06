@@ -89,6 +89,29 @@ state files at `<hermes_home>/`. To share the fact graph with a
 project-scoped Claude Code / Cursor install, set
 `WORLD_MODEL_DB_PATH` before starting Hermes.
 
+## Content-type routing (v0.12.3)
+
+Every fact carries an optional `content_type` field: `rule`, `fact`,
+or `procedure`. When `get_injection_context` runs at PostCompact,
+UserPromptSubmit, or SessionStart, it routes by that field:
+
+| content_type | Auto-inject at boundary? | How to retrieve |
+| --- | --- | --- |
+| `rule` | **Yes** — dedicated "Rules (always active)" section, drawn first from the fact budget | Also queryable via `query_fact` with `content_type='rule'` |
+| `fact` (or NULL) | Yes, but only in the remaining fact budget after rules are placed | Default target of `query_fact` |
+| `procedure` | **No** — never auto-injected | Only surfaced when explicitly summoned via `query_fact` with `content_type='procedure'` |
+
+The rationale: on a Hermes agent turn the LLM should see cross-cutting
+rules unconditionally, look up facts as needed, and pull procedures
+only when a workflow is actually being executed. Silent injection of
+long procedures at every boundary wastes context; silent injection of
+rules is precisely what rules are for.
+
+`content_type` is nullable and legacy rows without the field are
+treated as `fact` for routing purposes (they compete for the same
+fact-budget slots). Writes are set at insert time by the caller — the
+plugin does not infer content_type from fact text.
+
 ## Caveats
 
 - **Sync ↔ async bridge.** Hermes' ABC is synchronous;

@@ -49,7 +49,11 @@ class WorldModelTools:
     # ============================================================================
 
     async def query_fact(
-        self, query: str, entity_type: Optional[str] = None, context: Dict[str, Any] = None
+        self,
+        query: str,
+        entity_type: Optional[str] = None,
+        context: Dict[str, Any] = None,
+        content_type: Optional[str] = None,
     ) -> QueryFactResult:
         """
         Query the knowledge graph for facts about entities.
@@ -58,14 +62,27 @@ class WorldModelTools:
             query: Search query (e.g., "User.findByEmail", "JWT authentication")
             entity_type: Optional filter by entity type
             context: Additional context for the query
+            content_type: Optional filter — 'rule', 'fact', or 'procedure'. When
+                set, only rows with that exact content_type are returned; NULL
+                (unclassified) rows are excluded. This is the load-bearing path
+                for explicitly summoning procedures, which are excluded from
+                auto-injection by design (v0.12.3 content-type routing).
 
         Returns:
             QueryFactResult with exists flag, matching facts, and confidence score
         """
-        logger.info(f"Querying fact: {query}, entity_type: {entity_type}")
+        logger.info(
+            f"Querying fact: {query}, entity_type: {entity_type}, "
+            f"content_type: {content_type}"
+        )
 
         # Search facts using full-text search
-        result = await self.kg.query_facts(query=query, entity_type=entity_type, current_only=True)
+        result = await self.kg.query_facts(
+            query=query,
+            entity_type=entity_type,
+            current_only=True,
+            content_type=content_type,
+        )
 
         # If no facts found, try searching entities directly
         if not result.facts:
@@ -933,32 +950,80 @@ class WorldModelTools:
         self,
         limit: int = 10,
         search: Optional[str] = None,
+        content_types: Optional[List[str]] = None,
+        exclude_content_types: Optional[List[str]] = None,
     ) -> list:
-        """Return recent canonical facts as dicts. Private helper for injection."""
+        """Return recent canonical facts as dicts. Private helper for injection.
+
+        content_types / exclude_content_types are the v0.12.3 routing hooks:
+        - content_types=[...]  -> only rows where content_type IN (...)
+                                  NULL rows are matched if 'NULL' is in the list.
+        - exclude_content_types=[...] -> rows where content_type NOT IN (...)
+                                         NULL rows are always kept unless
+                                         'NULL' is in the exclusion list.
+
+        Both filters compose. The default (both None) preserves pre-v0.12.3
+        behavior — return every canonical fact regardless of content_type.
+        """
         import aiosqlite
+
+        clauses = ["status = 'canonical'"]
+        params: List[Any] = []
+
+        if search:
+            clauses.append("fact_text LIKE ?")
+            params.append(f"%{search}%")
+
+        if content_types:
+            null_included = "NULL" in content_types
+            non_null = [c for c in content_types if c != "NULL"]
+            if non_null and null_included:
+                placeholders = ",".join("?" * len(non_null))
+                clauses.append(f"(content_type IN ({placeholders}) OR content_type IS NULL)")
+                params.extend(non_null)
+            elif non_null:
+                placeholders = ",".join("?" * len(non_null))
+                clauses.append(f"content_type IN ({placeholders})")
+                params.extend(non_null)
+            elif null_included:
+                clauses.append("content_type IS NULL")
+
+        if exclude_content_types:
+            null_excluded = "NULL" in exclude_content_types
+            non_null = [c for c in exclude_content_types if c != "NULL"]
+            if non_null and null_excluded:
+                placeholders = ",".join("?" * len(non_null))
+                clauses.append(
+                    f"(content_type NOT IN ({placeholders}) AND content_type IS NOT NULL)"
+                )
+                params.extend(non_null)
+            elif non_null:
+                placeholders = ",".join("?" * len(non_null))
+                clauses.append(
+                    f"(content_type NOT IN ({placeholders}) OR content_type IS NULL)"
+                )
+                params.extend(non_null)
+            elif null_excluded:
+                clauses.append("content_type IS NOT NULL")
+
+        where = " AND ".join(clauses)
+        sql = (
+            f"SELECT id, fact_text, valid_at, content_type FROM facts "
+            f"WHERE {where} ORDER BY valid_at DESC LIMIT ?"
+        )
+        params.append(limit)
+
         async with aiosqlite.connect(self.kg.facts_db) as db:
             db.row_factory = aiosqlite.Row
-            if search:
-                cursor = await db.execute(
-                    """
-                    SELECT id, fact_text, valid_at FROM facts
-                    WHERE status = 'canonical' AND fact_text LIKE ?
-                    ORDER BY valid_at DESC LIMIT ?
-                    """,
-                    (f"%{search}%", limit),
-                )
-            else:
-                cursor = await db.execute(
-                    """
-                    SELECT id, fact_text, valid_at FROM facts
-                    WHERE status = 'canonical'
-                    ORDER BY valid_at DESC LIMIT ?
-                    """,
-                    (limit,),
-                )
+            cursor = await db.execute(sql, params)
             rows = await cursor.fetchall()
             return [
-                {"id": r["id"], "fact_text": r["fact_text"], "valid_at": r["valid_at"]}
+                {
+                    "id": r["id"],
+                    "fact_text": r["fact_text"],
+                    "valid_at": r["valid_at"],
+                    "content_type": r["content_type"],
+                }
                 for r in rows
             ]
 
@@ -1021,15 +1086,36 @@ class WorldModelTools:
 
         event_type: one of "PostCompact", "UserPromptSubmit", "SessionStart"
         project_hint: optional substring to bias fact selection toward (e.g. file path or topic)
+
+        v0.12.3 content-type routing:
+          - content_type='rule'      always-inject; gets its own section, drawn first
+          - content_type='fact' or NULL   search-on-demand; fills remaining slots
+          - content_type='procedure' never auto-inject; excluded from this bundle
+                                     entirely (surface only via query_fact with
+                                     an explicit content_type='procedure' filter)
+
+        The max_facts budget covers both the rules section and the facts
+        section combined. Rules get preference: up to `max_facts` rules,
+        then the remainder is filled from the fact/NULL pool.
         """
         # Top constraints by violation_count (existing get_constraints orders by it desc)
         all_constraints = await self.kg.get_constraints()
         constraints = all_constraints[:max_constraints]
 
-        # Recent canonical facts: pull from facts table directly
-        facts = await self._recent_canonical_facts(
-            limit=max_facts, search=project_hint
+        # v0.12.3: two-pool routing. Rules first (always-inject), then
+        # search-on-demand facts fill remaining slots. Procedures are
+        # excluded from auto-injection by design.
+        rules = await self._recent_canonical_facts(
+            limit=max_facts,
+            search=project_hint,
+            content_types=["rule"],
         )
+        remaining = max(0, max_facts - len(rules))
+        recent_facts = await self._recent_canonical_facts(
+            limit=remaining,
+            search=project_hint,
+            content_types=["fact", "NULL"],
+        ) if remaining else []
 
         lines: list = []
         if constraints:
@@ -1039,10 +1125,18 @@ class WorldModelTools:
                     f"- {c.rule_name}: {c.description} (violated {c.violation_count}x)"
                 )
 
-        if facts:
-            lines.append("")
+        if rules:
+            if lines:
+                lines.append("")
+            lines.append("## Rules (always active)")
+            for f in rules:
+                lines.append(f"- {f['fact_text']}")
+
+        if recent_facts:
+            if lines:
+                lines.append("")
             lines.append("## Recent canonical facts")
-            for f in facts:
+            for f in recent_facts:
                 lines.append(f"- {f['fact_text']}")
 
         injection = "\n".join(lines).strip()
@@ -1050,7 +1144,8 @@ class WorldModelTools:
             {
                 "event_type": event_type,
                 "injection": injection,
-                "facts_count": len(facts),
+                "rules_count": len(rules),
+                "facts_count": len(recent_facts),
                 "constraints_count": len(constraints),
             },
             indent=2,
