@@ -50,6 +50,14 @@ THREADS: list[tuple[str, int, int, str]] = [
     # v0.11.0 ship notification on the Hermes thread where the plugin was
     # specifically motivated (@TechFlipsi pushback + our follow-up).
     ("NousResearch/hermes-agent",     47349,  4869758223, "MemoryProvider plugin shipped (v0.11.0)"),
+
+    # v0.12.0 Copilot ecosystem engagement (2026-07-06). Broad-search hit
+    # three direct-fit threads in github/copilot-cli: doctor for hook
+    # debugging (#4001), scoping model for cross-repo memory leak (#3945),
+    # and product fit for local auto-memory (#2930).
+    ("github/copilot-cli",             4001,  4889297179, "settings.json hooks fail on Windows (doctor angle)"),
+    ("github/copilot-cli",             3945,  4889297918, "Memories leaking between repositories (scoping angle)"),
+    ("github/copilot-cli",             2930,  4889299165, "Local auto-memory (product-fit answer)"),
 ]
 
 
