@@ -210,6 +210,121 @@ class WorldModelMemoryProvider(MemoryProvider):
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(values, indent=2))
 
+    # ------------------------------------------------------------------
+    # Optional lifecycle hooks (v0.12.9)
+    # ------------------------------------------------------------------
+    #
+    # Hermes calls these at specific lifecycle points if the provider
+    # implements them. All are best-effort by convention: an exception
+    # inside a hook must never crash the Hermes turn. Each hook catches
+    # and logs; returns a safe default; and passes through the sync-async
+    # bridge to reuse the shipped WorldModelTools async methods.
+
+    def sync_turn(self, turn_data: Dict[str, Any], **kwargs) -> None:
+        """Called after every completed agent turn. Records the turn as a
+        world-model event so cross-tool history is preserved. Non-blocking;
+        an exception is swallowed to protect the Hermes loop."""
+        if self._tools is None:
+            return
+        try:
+            _run_async(self._tools.record_event(
+                event_type="tool_call",
+                session_id=str(turn_data.get("session_id") or self._session_id or "unknown"),
+                entities=list(turn_data.get("entities") or []),
+                description=str(turn_data.get("description") or "hermes turn"),
+                reasoning=turn_data.get("reasoning"),
+                evidence={
+                    "tool_name": "hermes:sync_turn",
+                    "tool_input": turn_data.get("input", {}),
+                    "tool_output": turn_data.get("output", {}),
+                },
+                success=bool(turn_data.get("success", True)),
+            ))
+        except Exception:
+            logger.exception("sync_turn failed; ignoring")
+
+    def on_pre_compress(self, context: Dict[str, Any], **kwargs) -> str:
+        """Called just before Hermes compresses context. Returns a short
+        injection bundle (rules + recent canonical facts + top constraints)
+        that Hermes can include verbatim in the compressed summary. This is
+        the load-bearing Hermes-side complement to the v0.12.3 content-type
+        routing: rules always inject at pre-compress; procedures never do."""
+        if self._tools is None:
+            return ""
+        try:
+            payload = _run_async(self._tools.get_injection_context(
+                event_type="PostCompact",
+                project_hint=context.get("project_hint") if isinstance(context, dict) else None,
+                max_constraints=int((context or {}).get("max_constraints", 10)),
+                max_facts=int((context or {}).get("max_facts", 10)),
+            ))
+            data = json.loads(payload)
+            return data.get("injection", "") or ""
+        except Exception:
+            logger.exception("on_pre_compress failed; returning empty injection")
+            return ""
+
+    def prefetch(self, query_hint: Optional[str], **kwargs) -> List[Dict[str, Any]]:
+        """Speculative pre-fetch. Given a short hint (e.g. topic or file
+        path), warm the fact cache and return facts Hermes can pre-load
+        into context. Returns [] on any failure or when no hint is given."""
+        if self._tools is None or not query_hint:
+            return []
+        try:
+            result = _run_async(self._tools.query_fact(query=query_hint))
+            return [f.model_dump() for f in result.facts]
+        except Exception:
+            logger.exception("prefetch failed; returning empty list")
+            return []
+
+    def on_session_end(self, session_data: Dict[str, Any], **kwargs) -> None:
+        """Called when a Hermes session ends. Records a session-close event
+        so the fact graph has a boundary marker for later attribution."""
+        if self._tools is None:
+            return
+        try:
+            _run_async(self._tools.record_event(
+                event_type="tool_call",
+                session_id=str(session_data.get("session_id") or self._session_id or "unknown"),
+                entities=[],
+                description="hermes session ended",
+                reasoning=session_data.get("reason"),
+                evidence={
+                    "tool_name": "hermes:on_session_end",
+                    "tool_input": {
+                        "turn_count": session_data.get("turn_count"),
+                        "duration_ms": session_data.get("duration_ms"),
+                    },
+                    "tool_output": {},
+                },
+                success=True,
+            ))
+        except Exception:
+            logger.exception("on_session_end failed; ignoring")
+
+    def on_memory_write(self, entry: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Called when Hermes writes to memory through this provider. Logs
+        the write, echoes the entry (Hermes uses the return value as the
+        possibly-mutated entry). This hook does NOT perform content-type
+        classification — that is a caller responsibility — but it does
+        stamp a routing hint so downstream consumers know which bucket
+        the write landed in (rule / fact / procedure / null).
+
+        Returning the entry unchanged is the safe default. A future revision
+        can annotate content_type here if the caller has not set it."""
+        try:
+            content_type = None
+            if isinstance(entry, dict):
+                content_type = entry.get("content_type")
+            logger.info(
+                "on_memory_write: content_type=%s session=%s",
+                content_type,
+                self._session_id,
+            )
+        except Exception:
+            logger.exception("on_memory_write logging failed; ignoring")
+        return entry if isinstance(entry, dict) else {}
+
 
 # --------------------------------------------------------------------------
 # Tool-schema helpers
