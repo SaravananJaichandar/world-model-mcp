@@ -167,6 +167,29 @@ class KnowledgeGraph:
                 await db.execute(
                     "CREATE INDEX IF NOT EXISTS idx_facts_content_type ON facts(content_type)"
                 )
+            # v0.12.2: enterprise memory-governance additions.
+            #   influence_state — storage vs planning-influence policy,
+            #     distinct from status. NULL = legacy row, treated as
+            #     'approved' by planning consumers.
+            #   expires_at — hard drop-dead timestamp complementing the
+            #     continuous last_decay_at erosion. NULL = never expires.
+            # Both additive and NULL-tolerant. See models.py Fact for
+            # semantics; consumer wiring (planning-query filter, expiry
+            # sweep) lands in a follow-up.
+            if "influence_state" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN influence_state TEXT"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_influence_state ON facts(influence_state)"
+                )
+            if "expires_at" not in cols:
+                await db.execute(
+                    "ALTER TABLE facts ADD COLUMN expires_at TIMESTAMP"
+                )
+                await db.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_facts_expires_at ON facts(expires_at)"
+                )
             # Always backfill any NULL content_hash rows (covers post-migration inserts too)
             cursor = await db.execute(
                 "SELECT id, fact_text, evidence_path FROM facts WHERE content_hash IS NULL"
