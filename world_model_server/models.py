@@ -115,6 +115,42 @@ class Fact(BaseModel):
             "unclassified; write paths do not require this field."
         ),
     )
+    # v0.12.2: enterprise memory-governance additions. Two independent
+    # nullable fields covering gaps the existing status/severity/decay
+    # axes don't address:
+    #
+    #   influence_state — separates *storage* from *influence on planning*.
+    #     A fact can be stored as evidence (observed / pending_review)
+    #     without being trusted by planning consumers, or explicitly
+    #     blocked from planning while remaining in the audit trail.
+    #     Distinct from `status` (which tracks canonical/superseded
+    #     lineage). NULL = legacy row, treated as 'approved' by consumers
+    #     for backward compatibility.
+    #
+    #   expires_at — hard drop-dead timestamp. Complements the continuous
+    #     `last_decay_at` confidence erosion. Use for compliance data
+    #     retention, ephemeral credentials, and rows that should be
+    #     removed entirely rather than weighted down. NULL = never expires.
+    #
+    # Both are additive and NULL-tolerant; no read/write paths are
+    # required to consume them. Consumer wiring (planning-query filter,
+    # expiry sweep) is tracked separately.
+    influence_state: Optional[Literal["observed", "pending_review", "approved", "blocked"]] = Field(
+        None,
+        description=(
+            "Storage-vs-influence policy: 'observed' (logged but not "
+            "trusted), 'pending_review' (queued for promotion), 'approved' "
+            "(trusted for planning), 'blocked' (retained for audit but "
+            "excluded from planning). NULL = legacy row / treated as approved."
+        ),
+    )
+    expires_at: Optional[datetime] = Field(
+        None,
+        description=(
+            "Hard expiry timestamp. Rows past this time should be dropped, "
+            "not just decayed. NULL = never expires."
+        ),
+    )
 
     class Config:
         json_schema_extra = {
