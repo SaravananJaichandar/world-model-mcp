@@ -64,6 +64,12 @@ THREADS: list[tuple[str, int, int, str]] = [
     # replies to our v0.10 comment; both landed in v0.12.2. Comment
     # describes what shipped without personal attribution.
     ("openclaw/openclaw",              7707,  4889332307, "v0.12 update: influence_state + expires_at shipped"),
+
+    # v0.12.0 outbound proposal on osaurus-ai/osaurus (Swift-native macOS
+    # AI agent framework, $63M raised, 6.8K stars). We OPENED the issue
+    # rather than commenting on an existing one — tracker uses
+    # comment_id=0 to anchor on the issue body itself.
+    ("osaurus-ai/osaurus",             1890,           0, "MCP server proposal (opened by us)"),
 ]
 
 
@@ -93,32 +99,52 @@ def fmt_reactions(reactions: dict) -> str:
 
 
 def fetch_thread_status(repo: str, issue_num: int, comment_id: int, label: str) -> dict:
-    """Fetch current status for one thread."""
-    issue = gh_api(f"repos/{repo}/issues/{issue_num}")
-    our_comment = gh_api(f"repos/{repo}/issues/comments/{comment_id}")
+    """Fetch current status for one thread.
 
-    our_ts = our_comment["created_at"]
+    Two modes:
+      comment_id > 0 — we commented on someone else's thread. Fetch that
+        comment's reactions/timestamps.
+      comment_id == 0 — we OPENED the issue. Anchor on the issue body
+        itself (reactions live on the issue, not on a comment).
+    """
+    issue = gh_api(f"repos/{repo}/issues/{issue_num}")
+
+    if comment_id == 0:
+        # We opened this issue — anchor is the issue itself.
+        our_ts = issue["created_at"]
+        our_url = issue["html_url"]
+        reactions = issue.get("reactions", {})
+        # Replies since we opened = all comments (we haven't posted one)
+        exclude_id = None
+    else:
+        our_comment = gh_api(f"repos/{repo}/issues/comments/{comment_id}")
+        our_ts = our_comment["created_at"]
+        our_url = our_comment["html_url"]
+        reactions = our_comment.get("reactions", {})
+        exclude_id = comment_id
+
     issue_updated_ts = issue["updated_at"]
 
-    # Fetch replies to find activity after our comment
     all_comments = gh_api(
         f"repos/{repo}/issues/{issue_num}/comments?per_page=100&since={our_ts}"
     )
-    # Filter to comments strictly AFTER ours (the `since` param is inclusive)
-    replies_after = [c for c in all_comments if c["id"] != comment_id]
+    if exclude_id is not None:
+        replies_after = [c for c in all_comments if c["id"] != exclude_id]
+    else:
+        replies_after = all_comments
 
     return {
         "repo": repo,
         "issue": issue_num,
         "label": label,
         "url": f"https://github.com/{repo}/issues/{issue_num}",
-        "our_comment_url": our_comment["html_url"],
+        "our_comment_url": our_url,
         "issue_state": issue["state"],
         "total_comments": issue["comments"],
         "our_comment_at": our_ts,
         "issue_updated_at": issue_updated_ts,
         "replies_after_ours": len(replies_after),
-        "reactions": our_comment.get("reactions", {}),
+        "reactions": reactions,
         "latest_reply_from": (
             replies_after[-1]["user"]["login"] if replies_after else None
         ),
