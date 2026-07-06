@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "world-model": {
+      "command": "python3",
+      "args": ["-m", "world_model_server.server"],
+      "env": {
+        "WORLD_MODEL_DB_PATH": ".claude/world-model"
+      },
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
