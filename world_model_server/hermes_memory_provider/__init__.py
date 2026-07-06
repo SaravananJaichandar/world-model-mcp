@@ -226,7 +226,12 @@ def _surfaced_tool_schemas():
     """
     yield {
         "name": "query_fact",
-        "description": "Query the world-model knowledge graph for facts about entities (APIs, functions, classes, constraints).",
+        "description": (
+            "Query the world-model knowledge graph for facts about entities "
+            "(APIs, functions, classes, constraints). Pass content_type='procedure' "
+            "to explicitly summon procedures, which are excluded from auto-injection "
+            "by design (v0.12.3 content-type routing)."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -236,6 +241,10 @@ def _surfaced_tool_schemas():
                     "enum": ["api", "function", "class", "constraint", "file", "package"],
                 },
                 "context": {"type": "object"},
+                "content_type": {
+                    "type": "string",
+                    "enum": ["rule", "fact", "procedure"],
+                },
             },
             "required": ["query"],
         },

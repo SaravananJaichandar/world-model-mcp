@@ -78,6 +78,15 @@ async def main():
                             "type": "object",
                             "description": "Additional context for the query",
                         },
+                        "content_type": {
+                            "type": "string",
+                            "enum": ["rule", "fact", "procedure"],
+                            "description": (
+                                "Optional filter by content_type. Use 'procedure' "
+                                "to explicitly summon procedures (which are "
+                                "excluded from auto-injection by design)."
+                            ),
+                        },
                     },
                     "required": ["query"],
                 },
@@ -490,6 +499,7 @@ async def main():
                     query=arguments["query"],
                     entity_type=arguments.get("entity_type"),
                     context=arguments.get("context", {}),
+                    content_type=arguments.get("content_type"),
                 )
                 return [TextContent(type="text", text=result.model_dump_json(indent=2))]
 
