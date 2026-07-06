@@ -42,6 +42,9 @@ http = [
 hermes = [
     "ruamel.yaml>=0.17",
 ]
+continue = [
+    "ruamel.yaml>=0.17",
+]
 
 [project.scripts]
 world-model = "world_model_server.cli:main"

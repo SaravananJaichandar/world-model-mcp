@@ -918,21 +918,30 @@ def install_hermes_command(args):
 def install_continue_command(args):
     """Register world-model-mcp as an MCP server in Continue.
 
-    Writes a standalone YAML file at
+    Two modes:
+
+    Per-project (default): writes a standalone YAML file at
     <project-dir>/.continue/mcpServers/world-model.yaml, matching
-    Continue's documented per-server-file pattern. No config merge is
-    needed because Continue expects one YAML per MCP server in that
-    directory — we own the whole file.
+    Continue's per-server-file pattern. No merge needed — we own the
+    file end-to-end.
 
-    Defaults --python to sys.executable (absolute path). Rejects relative
-    --python overrides as a hard error, matching the OpenClaw and Hermes
-    adapters. No ruamel.yaml dependency needed because we author the
-    file end-to-end (no comment preservation problem to solve).
+    Global (--global): merges into ~/.continue/config.yaml's top-level
+    ``mcpServers`` LIST, preserving comments and every other entry.
+    The list-entry shape follows Continue's documented schema:
+      - name: world-model
+        type: stdio
+        command: <python>
+        args: [-m, world_model_server.server]
+        env: {WORLD_MODEL_DB_PATH: ...}
+    An existing world-model entry (matched by name) is skipped unless
+    --force, in which case it is replaced in place (other entries
+    keep their position). Global mode requires ruamel.yaml — install
+    with `pip install "world-model-mcp[continue]"` or `[hermes]`.
+
+    Defaults --python to sys.executable (absolute path). Rejects
+    relative --python overrides as a hard error, matching Hermes /
+    OpenClaw.
     """
-    project_dir = Path(args.project_dir).resolve()
-    mcp_servers_dir = project_dir / ".continue" / "mcpServers"
-    target = mcp_servers_dir / "world-model.yaml"
-
     python_bin = args.python or sys.executable
     if not Path(python_bin).is_absolute():
         console.print(
@@ -943,6 +952,15 @@ def install_continue_command(args):
         sys.exit(1)
 
     db_path = args.db_path or ".claude/world-model"
+
+    if getattr(args, "global_config", False):
+        _install_continue_global(args, python_bin=python_bin, db_path=db_path)
+        return
+
+    # Per-project mode (v0.10 behavior, unchanged).
+    project_dir = Path(args.project_dir).resolve()
+    mcp_servers_dir = project_dir / ".continue" / "mcpServers"
+    target = mcp_servers_dir / "world-model.yaml"
 
     yaml_body = (
         "name: world-model-mcp\n"
@@ -983,6 +1001,125 @@ def install_continue_command(args):
         "\nNext: reload the Continue extension (reopen the VS Code / JetBrains\n"
         "window, or reload the extension) so it picks up the new server.\n"
         "Then open agent mode and confirm world-model tools are visible."
+    )
+
+
+def _install_continue_global(args, python_bin: str, db_path: str) -> None:
+    """Merge world-model into the user-global ~/.continue/config.yaml.
+
+    Continue's schema puts mcpServers as a LIST of entries (each with a
+    ``name`` key), NOT a mapping keyed by name. This function preserves
+    entry order and every other top-level key, and uses ruamel.yaml
+    round-trip mode so comments and blank lines survive.
+    """
+    try:
+        from ruamel.yaml import YAML
+        from ruamel.yaml.error import YAMLError
+        from ruamel.yaml.comments import CommentedMap, CommentedSeq
+    except ImportError:
+        console.print(
+            "[red]install-continue --global requires ruamel.yaml.[/red]\n"
+            'Install with: pip install "world-model-mcp[continue]"'
+        )
+        sys.exit(1)
+
+    config_path = Path(args.config_path).expanduser().resolve() if args.config_path else (
+        Path.home() / ".continue" / "config.yaml"
+    )
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    yaml_rt.indent(mapping=2, sequence=4, offset=2)
+
+    if config_path.exists():
+        try:
+            existing = yaml_rt.load(config_path.read_text())
+        except YAMLError as exc:
+            console.print(
+                f"[red]Failed to parse {config_path} as YAML: {exc}[/red]\n"
+                "Fix the config file by hand or delete it and rerun."
+            )
+            sys.exit(1)
+        if existing is None:
+            existing = CommentedMap()
+    else:
+        existing = CommentedMap()
+
+    if not isinstance(existing, dict):
+        console.print(
+            f"[red]{config_path} did not parse as a YAML mapping; refusing to write.[/red]"
+        )
+        sys.exit(1)
+
+    servers_list = existing.get("mcpServers")
+    if servers_list is None:
+        existing["mcpServers"] = CommentedSeq()
+        servers_list = existing["mcpServers"]
+    if not isinstance(servers_list, list):
+        console.print(
+            f"[red]mcpServers in {config_path} is not a YAML list; refusing to write.[/red]\n"
+            "Continue's schema requires mcpServers to be a list of server entries."
+        )
+        sys.exit(1)
+
+    def _build_entry():
+        entry = CommentedMap()
+        entry["name"] = "world-model"
+        entry["type"] = "stdio"
+        entry["command"] = python_bin
+        entry_args = CommentedSeq()
+        entry_args.append("-m")
+        entry_args.append("world_model_server.server")
+        entry["args"] = entry_args
+        env = CommentedMap()
+        env["WORLD_MODEL_DB_PATH"] = db_path
+        entry["env"] = env
+        return entry
+
+    existing_index = None
+    for i, entry in enumerate(servers_list):
+        if isinstance(entry, dict) and entry.get("name") == "world-model":
+            existing_index = i
+            break
+
+    if existing_index is not None and not args.force:
+        console.print(
+            f"[yellow]world-model already present in {config_path} "
+            f"(mcpServers[{existing_index}])[/yellow]\n"
+            "Use --force to replace that entry in place. Other entries preserved."
+        )
+        return
+
+    if args.dry_run:
+        import io
+        console.print(f"[bold]Would write to:[/bold] {config_path}")
+        console.print("\n--- proposed mcpServers entry ---\n")
+        buf = io.StringIO()
+        yaml_rt.dump(_build_entry(), buf)
+        console.print(buf.getvalue())
+        if existing_index is not None:
+            console.print(f"(would replace existing entry at index {existing_index})")
+        else:
+            console.print(f"(would append to the end of a {len(servers_list)}-entry list)")
+        return
+
+    new_entry = _build_entry()
+    if existing_index is not None:
+        servers_list[existing_index] = new_entry
+    else:
+        servers_list.append(new_entry)
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w") as f:
+        yaml_rt.dump(existing, f)
+
+    console.print("[green]Continue adapter installed globally[/green]")
+    console.print(f"  Merged into {config_path}")
+    console.print(f"  command: {python_bin}")
+    console.print(f"  WORLD_MODEL_DB_PATH: {db_path}")
+    console.print(
+        "\nNext: reload the Continue extension in every editor window that "
+        "has it active."
     )
 
 
@@ -1581,11 +1718,31 @@ def main():
 
     continue_parser = subparsers.add_parser(
         "install-continue",
-        help="Wire world-model-mcp into Continue by writing .continue/mcpServers/world-model.yaml",
+        help=(
+            "Wire world-model-mcp into Continue. Default: writes "
+            ".continue/mcpServers/world-model.yaml per project. "
+            "--global: merges into ~/.continue/config.yaml instead."
+        ),
     )
     continue_parser.add_argument(
         "--project-dir", type=str, default=".",
-        help="Project directory to install into (default: current directory)",
+        help="Project directory to install into (default: current). Ignored with --global.",
+    )
+    continue_parser.add_argument(
+        "--global", dest="global_config", action="store_true",
+        help=(
+            "Merge into the user-global ~/.continue/config.yaml instead of "
+            "writing a per-project file. Preserves other mcpServers entries "
+            "and every comment. Requires ruamel.yaml (install with "
+            "'pip install \"world-model-mcp[continue]\"')."
+        ),
+    )
+    continue_parser.add_argument(
+        "--config-path", type=str, default=None,
+        help=(
+            "Override the global config path (only meaningful with --global; "
+            "default ~/.continue/config.yaml)."
+        ),
     )
     continue_parser.add_argument(
         "--python", type=str, default=None,
@@ -1601,11 +1758,14 @@ def main():
     )
     continue_parser.add_argument(
         "--force", action="store_true",
-        help="Overwrite the existing world-model.yaml file if present",
+        help=(
+            "Per-project mode: overwrite existing world-model.yaml. "
+            "--global mode: replace the existing world-model entry in place."
+        ),
     )
     continue_parser.add_argument(
         "--dry-run", action="store_true",
-        help="Print the YAML that would be written without touching disk",
+        help="Print what would be written without touching disk",
     )
     continue_parser.set_defaults(func=install_continue_command)
 
