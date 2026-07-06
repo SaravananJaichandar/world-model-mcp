@@ -1519,6 +1519,32 @@ def main():
     audit_parser.add_argument("--export", type=str, default=None, help="Path to write JSONL")
     audit_parser.set_defaults(func=audit_compactions_command)
 
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help=(
+            "Diagnostic checks against the world-model install in the current "
+            "project: settings.json shell-quoting, .mcp.json registration, "
+            "hook scripts, DB files, and Claude Code hook-error history"
+        ),
+    )
+    doctor_parser.add_argument(
+        "--project-dir", type=str, default=".",
+        help="Project directory to run checks against (default: current)",
+    )
+    doctor_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit machine-readable JSON instead of a table",
+    )
+    doctor_parser.add_argument(
+        "--fix", action="store_true",
+        help=(
+            "Attempt safe auto-fixes for failing checks that support them "
+            "(shell-quoting rewrite in settings.json, stub .mcp.json creation)"
+        ),
+    )
+    from .doctor import doctor_command
+    doctor_parser.set_defaults(func=doctor_command)
+
     args = parser.parse_args()
 
     if not hasattr(args, "func"):
