@@ -493,6 +493,9 @@ async def main():
         """Handle tool calls."""
         try:
             logger.info(f"Tool called: {name} with args: {arguments}")
+            # v0.12.11: log any 2026-07-28 _meta fields present (non-behavior-changing)
+            from .spec_readiness import log_meta_if_present
+            log_meta_if_present(name, arguments)
 
             if name == "query_fact":
                 result = await tools.query_fact(
