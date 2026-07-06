@@ -1,5 +1,80 @@
 # World Model MCP - Release Notes
 
+## v0.12.0 (July 2026)
+
+Breadth + depth release. Nine substantive changes ship across three surfaces: new adapter coverage (Copilot, Cline, Windsurf, Continue --global) that closes the largest addressable-audience gap left by v0.10; consumer wiring for the v0.11.1 content-type schema plus governance schema additions (`influence_state`, `expires_at`); and a diagnostic + spec-readiness pass (`world-model doctor`, MCP 2026-07-28 audit). Two roadmap items (v0.12.8 OpenClaw TS plugin, v0.12.10 Antigravity CLI adapter) are explicitly deferred per their roadmap-gated conditionals — no adoption signal and no unblocked SDK, respectively.
+
+### What ships
+
+- **v0.12.1: `world-model doctor` command.** Eight diagnostic checks — node availability, `.claude/settings.json` presence, settings.json shell-quoting (specifically the pre-v0.11.0 unquoted-`$CLAUDE_PROJECT_DIR` bug pattern the v0.11.2 dogfooding investigation surfaced), hook scripts, `.mcp.json` registration, world-model DB directory + `events_queue.jsonl`, stale events queue backlog, and Claude Code hook-error history filtered by `settings.json` mtime. `--json` for machine-readable output; `--fix` attempts safe rewrites. Would have caught the v0.11.0 shell-quoting bug automatically instead of via manual investigation.
+
+- **v0.12.2: `influence_state` + `expires_at` on Fact.** Two nullable additive fields closing enterprise memory-governance gaps the existing status/severity/decay axes did not address. `influence_state` (`observed`/`pending_review`/`approved`/`blocked`) separates storage from influence on planning — a fact can be stored as evidence without being trusted by planners, or blocked from planning while still visible to audit. `expires_at` complements the continuous `last_decay_at` erosion with hard drop-dead timestamps for compliance retention and ephemeral credentials. Migration mirrors the v0.11.1 pattern exactly: NULL-default ALTER, index, no backfill, idempotent. Citation polarity — evaluated and deliberately deferred to medium-term — requires retrieval caller cooperation not controllable at the schema layer.
+
+- **v0.12.3: universal content-type routing consumers.** Closes the write- and consumer-side loop opened by v0.11.1. That patch added `content_type` to the model and table but never wired a consumer — worse, `create_fact` silently dropped the field on write, so every caller that set it saw the value discarded. This release fixes both: `create_fact` now persists all three v0.11.1/v0.12.2 new fields, `query_facts` hydrates them on read, and `query_facts` accepts a `content_type` filter that excludes NULL rows when set. `tools.query_fact` and the MCP + Hermes surfaced schemas expose the filter. `get_injection_context` is now routing-aware: rules always inject at PostCompact / UserPromptSubmit / SessionStart under a dedicated "## Rules (always active)" section, facts (or NULL) fill remaining slots, procedures are excluded from auto-injection entirely and reachable only via explicit `query_fact(content_type='procedure')`. Rendered payload adds `rules_count` alongside `facts_count` and `constraints_count`.
+
+- **v0.12.4: GitHub Copilot Chat adapter (`install-copilot`).** Merges into `.vscode/mcp.json` per workspace. Copilot Chat uses `"servers"` at the top level, not `"mcpServers"` — this is where Copilot diverges from every other adapter world-model ships, and getting it wrong silently registers nothing. Merge semantics: absent → write; existing → preserve other servers; existing `world-model` → skip unless `--force`; malformed / wrong-shape JSON → refuse and leave file untouched. Load-bearing detail: users routinely have `.vscode/mcp.json` populated with the github MCP server and playwright; overwrite would delete that config with no recovery. Closes the largest addressable-audience gap in the adapter roster.
+
+- **v0.12.5: `install-continue --global` config-merge path.** Deferred from v0.10. Merges into `~/.continue/config.yaml`'s `mcpServers` LIST (Continue's schema — distinct from Hermes' mcp_servers-mapping and from Claude Code / Cursor / Copilot / Cline / Windsurf's mcpServers-mapping). `ruamel.yaml` round-trip preserves comments, blank lines, and key ordering so a heavily-annotated user config is not stripped. New `[continue]` extra mirrors `[hermes]`. Per-project mode (no `--global`) is unchanged; the v0.10 behavior contract is under regression coverage.
+
+- **v0.12.6: Cline adapter (`install-cline`).** Merges into `~/.cline/mcp.json`. Cline uses the `mcpServers` mapping shape — same as Cursor / Claude Code, so the merge logic mirrors install-copilot with a different top-level key. Cline-specific fields (`disabled: false`, `autoApprove: []`) defaulted safely in the bundled template.
+
+- **v0.12.7: Windsurf adapter (`install-windsurf`).** Merges into `~/.codeium/windsurf/mcp_config.json`. Windsurf uses the same `mcpServers` mapping shape as Cline, so merge behavior is behaviorally identical — only the default path differs. Merge logic deliberately copy-pasted from install-cline rather than refactored into a shared helper: each landed and passed its own regression suite; extraction is scope creep until a fourth mcpServers-mapping adapter arrives.
+
+- **v0.12.8: OpenClaw TypeScript plugin bundle — DEFERRED.** Roadmap gated on "MCP-only adoption of the v0.10 OpenClaw adapter justifies the plugin work." Signal check five days after v0.10 shipped: four tracked threads, zero reactions on our comments, no explicit ask for a TS plugin. Honoring the conditional.
+
+- **v0.12.9: Hermes lifecycle hooks on `WorldModelMemoryProvider`.** Layers the five optional lifecycle hooks (`sync_turn`, `on_pre_compress`, `prefetch`, `on_session_end`, `on_memory_write`) on top of the v0.11.0 MemoryProvider ABC. `on_pre_compress` returns a compact injection bundle that honors the v0.12.3 content-type routing — rules always inject, procedures never do. Contract for every hook: best-effort by convention (exceptions caught, safe default returned), sync front-door with async back-end via `_run_async`, safe no-op or empty return when called before `initialize()`.
+
+- **v0.12.10: Antigravity CLI adapter — DEFERRED.** Roadmap: "Blocked pending a `TransformCompactionHook` in the SDK." Confirmed the SDK CHANGELOG through v1.0.16 has zero mention of `TransformCompactionHook` or any compaction-time hook. External blocker still in place; ships whenever the SDK does.
+
+- **v0.12.11: MCP 2026-07-28 spec readiness scaffolding.** Non-behavior-changing observability + public audit. The 2026-07-28 spec is currently Release Candidate with the final ship 22 days out; building against the RC risks throwaway code if key names or response shapes drift before final. This release ships: (1) `world_model_server/spec_readiness.READINESS_STATE` — the machine-readable audit matrix. Five rows locked at states covering stateless-first (`compatible`), `_meta` field (`logged`), HTTP header emission (`not_yet` — gateway routing risk), `InputRequiredResult` (`not_applicable` — no tool elicits mid-call input), `server/discover` (`not_yet` — response shape unlocked). (2) `extract_meta` / `log_meta_if_present` observability helpers wired into `server.py:call_tool` with a single line. (3) `docs/MCP_2026_SPEC_READINESS.md` public audit doc kept in lockstep with `READINESS_STATE` under test. Backward compatibility with the 2025-03-26 spec is preserved unconditionally.
+
+### Test breakdown
+
+Full suite: **624 tests pass** (v0.11.2 baseline: 486; +138 across nine feature PRs).
+
+- v0.12.1: 24 (doctor checks, auto-fixes, CLI, JSON output)
+- v0.12.2: 18 (schema migration, model validation, index creation, NULL tolerance)
+- v0.12.3: 18 (write persistence regression, filter behavior, injection routing, procedure exclusion, MCP + Hermes surfaced schemas)
+- v0.12.4: 17 (bundled shape, merge preservation, force overwrite, refusal on malformed input, dry-run, CLI wiring)
+- v0.12.5: 14 (fresh install, merge order, comment round-trip, skip/force, shape refusal, per-project regression contract)
+- v0.12.6: 17 (Cline-shaped bundled, merge cases, error refusal, dry-run, CLI wiring)
+- v0.12.7: 17 (Windsurf-shaped bundled, merge cases, error refusal, dry-run, CLI wiring)
+- v0.12.9: 22 (five hooks present + callable, events written, routing honored in pre-compress, exception swallowing, before-initialize safety)
+- v0.12.11: 15 (readiness state locked, extract_meta / log_meta semantics, call-site wiring, audit doc / constant sync)
+
+Contradictions benchmark: **105/105 (100.0%)** — unchanged from v0.11.0's `auto` strategy rewrite.
+
+Pre-v0.12 test files (all 18 of them) still green in isolation and as a suite. Real pre-v0.12 DB opened, upgraded, written, and queried by v0.12.3 code end-to-end: migration idempotent, legacy rows readable with all three new fields at NULL, new writes persist the fields, injection includes both legacy and new rows in the right sections.
+
+### Migration notes
+
+All schema additions are additive-only ALTER TABLE + NULL defaults; existing DBs are auto-upgraded on next `KnowledgeGraph.initialize()`. Tested end-to-end from a v0.11.0 DB through v0.12.3 code — legacy rows readable, new rows write cleanly with `content_type` / `influence_state` / `expires_at` populated, `get_injection_context` renders both old and new sections correctly.
+
+No breaking changes to any public tool schema. `query_fact` gains an optional `content_type` filter parameter — clients that do not send it see behavior identical to v0.11.
+
+### Adapter matrix after v0.12
+
+| Runtime | Adapter | Config location | Top-level shape |
+| --- | --- | --- | --- |
+| Claude Code | `.mcp.json` shipped in v0.7 | project | `mcpServers` map |
+| Cursor | `install-cursor` | project `.cursor/` | `mcpServers` map |
+| Codex | `install-codex` | `~/.codex/config.toml` | TOML append |
+| Hermes | `install-hermes`, `install-hermes-provider` | `~/.hermes/config.yaml` / plugin dir | `mcp_servers` map |
+| Continue | `install-continue` (per-project) + `--global` | project or `~/.continue/config.yaml` | `mcpServers` list |
+| OpenClaw | `install-openclaw` | project | JSON |
+| pi | `install-pi` | package | pi manifest |
+| GitHub Copilot | `install-copilot` **(new)** | `.vscode/mcp.json` | `servers` map |
+| Cline | `install-cline` **(new)** | `~/.cline/mcp.json` | `mcpServers` map |
+| Windsurf | `install-windsurf` **(new)** | `~/.codeium/windsurf/mcp_config.json` | `mcpServers` map |
+
+Ten runtimes covered.
+
+### Deferred items
+
+- **v0.12.8 OpenClaw TypeScript plugin bundle** — no adoption signal within five days of v0.10 shipping. Roadmap-gated on MCP-only adoption of the v0.10 adapter justifying the TypeScript surface. Revisit when a specific integrator asks.
+- **v0.12.10 Antigravity CLI adapter** — SDK still lacks `TransformCompactionHook` through v1.0.16. Ships whenever the SDK does.
+- **Citation polarity schema field** — evaluated and moved to medium-term. Populating it requires the retrieval caller to know supporting-vs-refuting intent, which the schema layer cannot control. Revisit if an integrator commits to instrumenting the annotation.
+
 ## v0.11.0 (July 2026)
 
 Depth release. v0.10 expanded surface area to seven runtimes; v0.11 solves real problems for the users we now have rather than adding more surfaces. Four things ship: a `auto` contradiction-resolution strategy rewrite (77.1% → 100.0% on the v0.8.1 benchmark), a Hermes native `MemoryProvider` plugin that intercepts writes at Hermes' routing layer, a content-type schema field (`rule` / `fact` / `procedure`) for future routing intelligence, and a dogfooding case study with a reproducibility contract.
