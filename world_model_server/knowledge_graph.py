@@ -621,15 +621,23 @@ class KnowledgeGraph:
     # ============================================================================
 
     async def create_fact(self, fact: Fact) -> str:
-        """Create a new fact."""
+        """Create a new fact.
+
+        v0.12.3 extends the INSERT to persist content_type (added in v0.11.1)
+        plus the v0.12.2 governance fields (influence_state, expires_at).
+        Prior to v0.12.3 these fields lived on the Fact model but never
+        reached the DB, so callers that set them saw the value silently
+        dropped. All three are nullable and existing callers are unaffected.
+        """
         async with aiosqlite.connect(self.facts_db) as db:
             await db.execute(
                 """
                 INSERT INTO facts
                 (id, fact_text, valid_at, invalid_at, status, entity_ids, evidence_type,
                  evidence_path, derived_from, confidence, session_id, created_at,
-                 source_count, last_confirmed_at, source_tool, confirmer)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_count, last_confirmed_at, source_tool, confirmer,
+                 content_type, influence_state, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     fact.id,
@@ -648,6 +656,9 @@ class KnowledgeGraph:
                     fact.last_confirmed_at.isoformat() if fact.last_confirmed_at else None,
                     fact.source_tool,
                     fact.confirmer,
+                    fact.content_type,
+                    fact.influence_state,
+                    fact.expires_at.isoformat() if fact.expires_at else None,
                 ),
             )
             await db.commit()
@@ -659,6 +670,7 @@ class KnowledgeGraph:
         query: str,
         entity_type: Optional[str] = None,
         current_only: bool = True,
+        content_type: Optional[str] = None,
     ) -> QueryFactResult:
         """
         Query facts using full-text search. Results are cached for performance.
@@ -667,11 +679,14 @@ class KnowledgeGraph:
             query: Search query
             entity_type: Filter by entity type
             current_only: Only return facts where invalid_at IS NULL
+            content_type: Optional filter by content_type ('rule' / 'fact' /
+                'procedure'). NULL rows are always excluded when this is set
+                — a NULL row is unclassified and cannot answer a typed query.
 
         Returns:
             QueryFactResult with matching facts and confidence
         """
-        cache_key = f"facts:{query}:{entity_type}:{current_only}"
+        cache_key = f"facts:{query}:{entity_type}:{current_only}:{content_type}"
         cached = self._cache_get(cache_key)
         if cached is not None:
             return cached
@@ -689,6 +704,10 @@ class KnowledgeGraph:
 
             if current_only:
                 sql_query += " AND f.invalid_at IS NULL"
+
+            if content_type is not None:
+                sql_query += " AND f.content_type = ?"
+                params.append(content_type)
 
             sql_query += " ORDER BY f.confidence DESC, f.created_at DESC LIMIT 10"
 
@@ -733,6 +752,13 @@ class KnowledgeGraph:
                         created_at=datetime.fromisoformat(decayed["created_at"]),
                         source_tool=decayed.get("source_tool"),
                         confirmer=decayed.get("confirmer"),
+                        content_type=decayed.get("content_type"),
+                        influence_state=decayed.get("influence_state"),
+                        expires_at=(
+                            datetime.fromisoformat(decayed["expires_at"])
+                            if decayed.get("expires_at")
+                            else None
+                        ),
                     )
                 )
 
