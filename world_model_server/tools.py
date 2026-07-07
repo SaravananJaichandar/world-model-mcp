@@ -35,6 +35,48 @@ from .linters import LinterIntegration
 logger = logging.getLogger(__name__)
 
 
+def _build_openai_compatible_client(config: Config):
+    """Build an AsyncOpenAI client pointed at the configured base URL.
+    v0.12.13 — enables Coach dispatch against OpenRouter / Ollama / vLLM /
+    LiteLLM without going through a proxy.
+
+    Returns None (and logs) if:
+      - the `openai` package isn't installed
+      - no base_url is configured
+
+    The API key priority: explicit config → OPENROUTER_API_KEY →
+    OPENAI_API_KEY → a placeholder for local endpoints that don't
+    authenticate. verify_answer maps None-client to LOW + error.
+    """
+    import os
+
+    if not config.verification_base_url:
+        logger.warning(
+            "verification_backend='openai-compatible' but no verification_base_url "
+            "configured. Set WORLD_MODEL_VERIFICATION_BASE_URL."
+        )
+        return None
+    try:
+        from openai import AsyncOpenAI  # type: ignore
+    except ImportError:
+        logger.warning(
+            "verification_backend='openai-compatible' requires the openai package: "
+            "pip install 'world-model-mcp[openai]' (or pip install openai)."
+        )
+        return None
+
+    api_key = (
+        config.verification_api_key
+        or os.getenv("OPENROUTER_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or "sk-local-no-auth-needed"
+    )
+    return AsyncOpenAI(
+        base_url=config.verification_base_url,
+        api_key=api_key,
+    )
+
+
 class WorldModelTools:
     """Implementation of all MCP tools for the world model."""
 
@@ -1211,11 +1253,17 @@ class WorldModelTools:
             except Exception:
                 logger.exception("Skipping malformed fact row: id=%s", fid)
 
-        # Coach client: reuse the extractor's client when possible so we
-        # don't spawn a second AsyncAnthropic per verify call. Fall back to
-        # None when no API key is configured — verify_answer handles that.
-        client = getattr(self.extractor, "client", None)
+        # Coach client. v0.12.12 defaults to reusing extractor.client
+        # (AsyncAnthropic). v0.12.13 adds an OpenAI-compatible path — for
+        # OpenRouter, Ollama, vLLM, LiteLLM, etc. — selected via
+        # Config.verification_backend + verification_base_url.
+        backend = self.config.verification_backend
         model = verification_model or self.config.verification_model
+
+        if backend == "openai-compatible":
+            client = _build_openai_compatible_client(self.config)
+        else:
+            client = getattr(self.extractor, "client", None)
 
         return await verify_answer(
             client=client,
@@ -1223,4 +1271,5 @@ class WorldModelTools:
             query=query,
             answer=answer,
             facts=facts,
+            backend=backend,
         )

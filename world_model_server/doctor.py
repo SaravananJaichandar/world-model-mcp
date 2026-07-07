@@ -389,6 +389,115 @@ def check_recent_hook_failures(project_dir: Path) -> CheckResult:
     )
 
 
+# ---------------------------------------------------------------------------
+# v0.12.13: Copilot CLI hook-error signature scan
+# ---------------------------------------------------------------------------
+#
+# Copilot CLI on Windows implements the Claude Code hook contract in a way
+# that produces two silent-failure modes documented in copilot-cli #4001:
+#
+#   (A) PowerShell parses bash-shaped commands, producing ParserError.
+#   (B) Copilot doesn't export $CLAUDE_PROJECT_DIR; paths resolve to
+#       "/.claude/..." which doesn't exist. Error signature: `No such
+#       file or directory: /.claude/...`.
+#
+# Both surface in ~/.copilot/logs/process-*.log (macOS/Linux) or the
+# equivalent under %USERPROFILE%\.copilot\logs\ on Windows.
+#
+# This check scans those logs if present, categorizes findings by
+# signature, and reports which of the two bugs is being hit. It does NOT
+# scan Windows-specific PATH shims (Git Bash vs WSL launcher) — that
+# needs Windows-side testing and lands separately.
+
+
+COPILOT_LOG_GLOBS = ("process-*.log", "hooks-*.log", "*.log")
+COPILOT_ERROR_POWERSHELL_PARSE = "ParserError"
+COPILOT_ERROR_MISSING_PROJECT_DIR = "/.claude/"  # cwd=/ + relative expansion
+
+
+def _copilot_log_dir() -> Optional[Path]:
+    """Return the Copilot log directory if it exists.
+    ~/.copilot/logs/ on macOS/Linux; %USERPROFILE%\\.copilot\\logs\\ on Windows.
+    Path.home() handles both."""
+    candidate = Path.home() / ".copilot" / "logs"
+    return candidate if candidate.exists() else None
+
+
+def check_copilot_hook_signatures(project_dir: Path) -> CheckResult:
+    """Scan ~/.copilot/logs/*.log for the two signatures documented in
+    github/copilot-cli#4001. SKIP when no Copilot install detected — this
+    check is opt-in via Copilot's mere presence, not a required part of
+    every doctor run.
+
+    Reports separately how many log files show each signature so operators
+    can tell which of the two Copilot-CLI bugs is affecting them.
+    """
+    log_dir = _copilot_log_dir()
+    if log_dir is None:
+        return CheckResult(
+            name="Copilot CLI hook error signatures",
+            status=PASS,
+            detail="Skipped: no ~/.copilot/logs/ directory (Copilot CLI not installed here)",
+        )
+
+    # Dedupe across overlapping globs (*.log matches everything else too).
+    log_files = sorted({
+        p for pattern in COPILOT_LOG_GLOBS for p in log_dir.glob(pattern)
+    })
+    if not log_files:
+        return CheckResult(
+            name="Copilot CLI hook error signatures",
+            status=PASS,
+            detail=f"Copilot log dir present ({log_dir}) but no log files match",
+        )
+
+    parser_errors = []
+    missing_dir_errors = []
+    for log in log_files:
+        try:
+            text = log.read_text(errors="replace")
+        except Exception:
+            continue
+        if COPILOT_ERROR_POWERSHELL_PARSE in text:
+            parser_errors.append(log.name)
+        if COPILOT_ERROR_MISSING_PROJECT_DIR in text:
+            missing_dir_errors.append(log.name)
+
+    if not parser_errors and not missing_dir_errors:
+        return CheckResult(
+            name="Copilot CLI hook error signatures",
+            status=PASS,
+            detail=f"Scanned {len(log_files)} Copilot log(s); no hook error signatures found",
+        )
+
+    parts = []
+    if parser_errors:
+        parts.append(
+            f"{len(parser_errors)} log(s) show PowerShell ParserError "
+            f"(Copilot running bash-shaped commands through PowerShell)"
+        )
+    if missing_dir_errors:
+        parts.append(
+            f"{len(missing_dir_errors)} log(s) show `/.claude/...` path resolution "
+            f"(Copilot not exporting $CLAUDE_PROJECT_DIR; cwd resolves to /)"
+        )
+    return CheckResult(
+        name="Copilot CLI hook error signatures",
+        status=WARN,
+        detail=(
+            "Hook errors detected in Copilot CLI logs. "
+            + " AND ".join(parts)
+            + f". See github/copilot-cli#4001. Log dir: {log_dir}"
+        ),
+        fix_hint=(
+            "Copilot-side bug (not world-model-mcp). Workaround: wrap hook "
+            "commands in `bash -c '...'` and fall back to the stdin JSON's "
+            "cwd field when $CLAUDE_PROJECT_DIR is unset. Full trace: "
+            "https://github.com/github/copilot-cli/issues/4001"
+        ),
+    )
+
+
 ALL_CHECKS: List[Callable[[Path], CheckResult]] = [
     check_node_available,
     check_settings_json_present,
@@ -398,6 +507,7 @@ ALL_CHECKS: List[Callable[[Path], CheckResult]] = [
     check_world_model_db_dir,
     check_stale_events_queue,
     check_recent_hook_failures,
+    check_copilot_hook_signatures,
 ]
 
 
