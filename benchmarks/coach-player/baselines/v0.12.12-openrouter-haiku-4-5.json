@@ -1,0 +1,109 @@
+{
+  "model": "claude-haiku-4-5-20251001",
+  "pairs_count": 12,
+  "metrics": {
+    "hallucination_catch_rate": 1.0,
+    "false_positive_rate": 0.0,
+    "partial_exact_medium": 1.0,
+    "partial_within_one_band": 1.0,
+    "overall_exact_match": 1.0
+  },
+  "rows": [
+    {
+      "id": "g1",
+      "category": "grounded",
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "g2",
+      "category": "grounded",
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "g3",
+      "category": "grounded",
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "g4",
+      "category": "grounded",
+      "expected": "HIGH",
+      "actual": "HIGH",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "p1",
+      "category": "partial",
+      "expected": "MEDIUM",
+      "actual": "MEDIUM",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "p2",
+      "category": "partial",
+      "expected": "MEDIUM",
+      "actual": "MEDIUM",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "p3",
+      "category": "partial",
+      "expected": "MEDIUM",
+      "actual": "MEDIUM",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "p4",
+      "category": "partial",
+      "expected": "MEDIUM",
+      "actual": "MEDIUM",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "h1",
+      "category": "hallucinated",
+      "expected": "LOW",
+      "actual": "LOW",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "h2",
+      "category": "hallucinated",
+      "expected": "LOW",
+      "actual": "LOW",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "h3",
+      "category": "hallucinated",
+      "expected": "LOW",
+      "actual": "LOW",
+      "correct": true,
+      "error": null
+    },
+    {
+      "id": "h4",
+      "category": "hallucinated",
+      "expected": "LOW",
+      "actual": "LOW",
+      "correct": true,
+      "error": null
+    }
+  ]
+}
