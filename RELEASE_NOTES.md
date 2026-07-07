@@ -1,5 +1,66 @@
 # World Model MCP - Release Notes
 
+## v0.12.12 (July 2026)
+
+Adversarial verification patch. Adds a `verify_retrieval` MCP tool that runs an independent Coach LLM call against a candidate answer + supplied source facts and returns a confidence band with itemized verified / unverified claim lists. Pattern ported from the maintainer's earlier `y=c` project (Coach-Player adversarial cooperation); world-model-mcp is the first MCP server to ship it as a first-class tool.
+
+### What ships
+
+- **`verify_retrieval(query, answer, fact_ids, verification_model?)`** — new tool on `WorldModelTools` and on the MCP + Hermes surfaced schemas. Fetches the supplied facts from the graph, sends them plus the answer to an independent Coach LLM call, and returns a `VerificationResult` with:
+  - `confidence` — `HIGH` (100% claims verified), `MEDIUM` (>=70%), `LOW` (<70%, or any failure)
+  - `verified_claims` + `unverified_claims` — itemized breakdown
+  - `source_pointers` — `[{claim, fact_id}]` mapping verified claims to their supporting fact
+  - `coach_reasoning` — Coach's short rationale (audit trail, non-load-bearing)
+  - `error` — non-None on Coach failure, no-key, empty-answer, no-facts (`confidence` is always LOW when set)
+
+- **`world_model_server.verification` module** — Coach LLM call path lives here in isolation. `_confidence_from_counts` is a pure banding rule (unit-tested and locked); `_run_coach` builds the deterministic Coach prompt (temperature=0, JSON-only response); `verify_answer` is the never-raises high-level entry point.
+
+- **`Config.verification_model`** — new field, env-configurable via `WORLD_MODEL_VERIFICATION_MODEL`. Defaults to `claude-haiku-4-5-20251001`. Verification is a per-answer overhead call; using Haiku by default keeps the cost profile at ~$0.001 per verify_retrieval call.
+
+- **`benchmarks/coach-player/`** — hand-labeled 12-pair benchmark (4 grounded, 4 partial, 4 hallucinated) plus a runner that reports hallucination catch rate, false positive rate, MEDIUM band correctness. Ship-floor policy: false positive rate ≤10% is enforced (non-zero exit); hallucination catch rate ≥95% is aspirational at N=12 and gets enforced once the labeled set expands to ≥30 pairs.
+
+### Contract
+
+`verify_retrieval` never raises. Every failure mode returns a `VerificationResult` with `confidence=LOW` and `error` populated:
+
+| Trigger | error value |
+|---|---|
+| No `ANTHROPIC_API_KEY` configured | `no_anthropic_api_key` |
+| Empty / whitespace-only answer | `empty_answer` |
+| No `fact_ids` supplied (or all missing from DB) | `no_source_facts` |
+| Coach LLM call raised | `coach_call_failed: <ExceptionType>` |
+| Coach response wasn't valid JSON | `coach_malformed_response: <parse detail>` |
+
+This matches the v0.12.9 lifecycle-hooks best-effort convention.
+
+### Design principles honored
+
+- **Isolation.** Coach lives in its own module and its own LLM call path — no prompt state shared with extraction or reasoning models. This is the adversarial part: Coach doesn't know how the answer was produced, only what the facts say.
+- **Cheap default.** Coach model defaults to Haiku 4.5 (fast + cheap). Verification is a per-answer overhead call; it shouldn't share the reasoning-model budget.
+- **Testable.** Coach call is factored so tests mock `AsyncAnthropic` without touching the wider pipeline. Confidence banding is a pure function.
+- **Ships-only receipts.** The pattern comes from the maintainer's earlier `y=c` project — this is the first time it lands as a shipped MCP tool with a benchmark harness.
+
+### Test breakdown
+
+- 27 new unit tests in `tests/test_v01212_coach_player.py` — schema, banding rule (locked at HIGH=100%, MEDIUM=>=70%, LOW=<70%), Coach prompt shape, JSON parsing (bare, code-fenced, malformed), `verify_answer` never-raises contract across all five failure modes, `WorldModelTools.verify_retrieval` end-to-end integration with mocked Coach client, MCP + Hermes surfaced schemas expose the tool with `required: [query, answer, fact_ids]`
+- 3 structural tests for the benchmark files (pairs.json shape + expected_confidence/category invariant, runner imports the shipped `verify_answer`)
+- Regression: full suite 654 pass (v0.12.0 baseline 624; +30 net)
+- Contradictions benchmark: 105/105 (100%)
+
+### Adapter matrix unchanged
+
+Ten runtimes still covered. `verify_retrieval` is available to any runtime already registered with world-model-mcp — no adapter changes needed.
+
+### Coach-Player benchmark, first run
+
+Left to the maintainer to run once (requires ANTHROPIC_API_KEY, ~$0.03). Expected result: 12/12 exact match on the starter pairs, or documented Coach failure modes if not. Post-run summary lives at `benchmarks/coach-player/results.json` after `--out` is passed.
+
+### What is NOT in this release
+
+- **Expansion of `pairs.json` to ≥30 pairs.** Aspirational for a follow-up; the current 12 pairs make the ship floor for hallucination catch rate un-enforceable at 95% (12/12 vs 11/12 gap is only 8%).
+- **`answer_with_verification` end-to-end tool** (query_fact → synthesize → verify in a single MCP call). Deferred — the two-step shape (`query_fact` then `verify_retrieval`) gives callers full control over the answer synthesis step, and adding a wrapper is a mechanical follow-up if that's the ask.
+- **Adaptive Coach model selection** based on answer length / claim count. Fixed Haiku 4.5 default is honest to ship; adaptive routing is an optimization for once we see real usage patterns.
+
 ## v0.12.0 (July 2026)
 
 Breadth + depth release. Nine substantive changes ship across three surfaces: new adapter coverage (Copilot, Cline, Windsurf, Continue --global) that closes the largest addressable-audience gap left by v0.10; consumer wiring for the v0.11.1 content-type schema plus governance schema additions (`influence_state`, `expires_at`); and a diagnostic + spec-readiness pass (`world-model doctor`, MCP 2026-07-28 audit). Two roadmap items (v0.12.8 OpenClaw TS plugin, v0.12.10 Antigravity CLI adapter) are explicitly deferred per their roadmap-gated conditionals — no adoption signal and no unblocked SDK, respectively.

@@ -486,6 +486,47 @@ async def main():
                     "required": ["fact_a_id", "fact_b_id"],
                 },
             ),
+            Tool(
+                name="verify_retrieval",
+                description=(
+                    "Adversarially verify an answer is grounded in a specific set "
+                    "of facts. An independent Coach LLM call checks each material "
+                    "claim in the answer against the supplied source facts and "
+                    "returns confidence (HIGH / MEDIUM / LOW), verified + "
+                    "unverified claim lists, and per-claim source_pointers. "
+                    "Never raises; failures return LOW + `error` populated. "
+                    "v0.12.12."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The user query the answer responds to",
+                        },
+                        "answer": {
+                            "type": "string",
+                            "description": "The candidate answer under verification",
+                        },
+                        "fact_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "IDs of facts the caller believes ground the "
+                                "answer. Missing IDs are silently dropped."
+                            ),
+                        },
+                        "verification_model": {
+                            "type": "string",
+                            "description": (
+                                "Optional Coach model override. Defaults to "
+                                "config.verification_model (Haiku 4.5)."
+                            ),
+                        },
+                    },
+                    "required": ["query", "answer", "fact_ids"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -707,6 +748,15 @@ async def main():
                     notes=arguments.get("notes"),
                 )
                 return [TextContent(type="text", text=result)]
+
+            elif name == "verify_retrieval":
+                result = await tools.verify_retrieval(
+                    query=arguments["query"],
+                    answer=arguments["answer"],
+                    fact_ids=arguments["fact_ids"],
+                    verification_model=arguments.get("verification_model"),
+                )
+                return [TextContent(type="text", text=result.model_dump_json(indent=2))]
 
             else:
                 error_msg = f"Unknown tool: {name}"

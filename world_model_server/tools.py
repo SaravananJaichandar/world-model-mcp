@@ -1150,3 +1150,77 @@ class WorldModelTools:
             },
             indent=2,
         )
+
+    # ============================================================================
+    # v0.12.12: Coach-Player adversarial verification
+    # ============================================================================
+
+    async def verify_retrieval(
+        self,
+        query: str,
+        answer: str,
+        fact_ids: List[str],
+        verification_model: Optional[str] = None,
+    ):
+        """Adversarially verify that an answer is grounded in a specific set
+        of facts. Returns a VerificationResult (never raises).
+
+        The Coach LLM call runs independently of any Player prompt state —
+        it sees only the query, the candidate answer, and the source facts.
+        Its job is to bind each material claim in the answer to a specific
+        fact_id or mark it unverified.
+
+        Args:
+            query: the user query the answer responds to
+            answer: the candidate answer to verify
+            fact_ids: ids of facts the caller believes ground the answer
+            verification_model: override the configured Coach model
+
+        Returns:
+            VerificationResult with confidence in {HIGH, MEDIUM, LOW},
+            verified/unverified claim lists, and source pointers.
+            LOW confidence + `error` populated on any failure mode.
+        """
+        from .verification import verify_answer
+
+        # Fetch facts. Missing ids are silently dropped — the Coach will
+        # simply have fewer sources to check against and will flag more
+        # claims as unverified, which is the correct outcome.
+        facts = []
+        for fid in fact_ids:
+            row = await self.kg.get_fact_by_id(fid)
+            if row is None:
+                continue
+            try:
+                facts.append(Fact(
+                    id=row["id"],
+                    fact_text=row["fact_text"],
+                    valid_at=datetime.fromisoformat(row["valid_at"]),
+                    invalid_at=(
+                        datetime.fromisoformat(row["invalid_at"])
+                        if row.get("invalid_at") else None
+                    ),
+                    status=row["status"],
+                    entity_ids=json.loads(row["entity_ids"]) if row.get("entity_ids") else [],
+                    evidence_type=row["evidence_type"],
+                    evidence_path=row["evidence_path"],
+                    confidence=row["confidence"],
+                    session_id=row.get("session_id"),
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                ))
+            except Exception:
+                logger.exception("Skipping malformed fact row: id=%s", fid)
+
+        # Coach client: reuse the extractor's client when possible so we
+        # don't spawn a second AsyncAnthropic per verify call. Fall back to
+        # None when no API key is configured — verify_answer handles that.
+        client = getattr(self.extractor, "client", None)
+        model = verification_model or self.config.verification_model
+
+        return await verify_answer(
+            client=client,
+            model=model,
+            query=query,
+            answer=answer,
+            facts=facts,
+        )

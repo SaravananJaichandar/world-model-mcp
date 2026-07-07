@@ -108,16 +108,21 @@ def test_f2_initialize_opens_knowledge_graph(tmp_path):
 
 
 def test_f2_get_tool_schemas_shape():
-    """Returns a list of dicts matching Hermes' tool-schema shape."""
+    """Returns a list of dicts matching Hermes' tool-schema shape.
+
+    v0.12.12 adds `verify_retrieval` — the Coach-Player adversarial
+    verification tool — bringing the surfaced count to 8.
+    """
     Provider = _import_provider()
     schemas = Provider().get_tool_schemas()
     assert isinstance(schemas, list)
-    assert len(schemas) == 7, f"Expected 7 surfaced tools, got {len(schemas)}"
+    assert len(schemas) == 8, f"Expected 8 surfaced tools, got {len(schemas)}"
     names = {s["name"] for s in schemas}
     assert names == {
         "query_fact", "get_constraints", "get_injection_context",
         "record_event", "record_correction",
         "find_contradictions", "resolve_contradiction",
+        "verify_retrieval",
     }
     for schema in schemas:
         assert "description" in schema

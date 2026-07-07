@@ -32,6 +32,17 @@ class Config(BaseModel):
         ),
         description="Model for complex reasoning",
     )
+    verification_model: str = Field(
+        default_factory=lambda: os.getenv(
+            "WORLD_MODEL_VERIFICATION_MODEL", "claude-haiku-4-5-20251001"
+        ),
+        description=(
+            "Model for the Coach adversarial verification pass in "
+            "verify_retrieval (v0.12.12). Defaults to Haiku 4.5 — fast + "
+            "cheap; verification is a per-answer overhead call and shouldn't "
+            "share the reasoning-model budget."
+        ),
+    )
     max_facts_per_query: int = Field(
         default_factory=lambda: int(os.getenv("WORLD_MODEL_MAX_FACTS_PER_QUERY", "10"))
     )
