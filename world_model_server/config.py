@@ -43,6 +43,35 @@ class Config(BaseModel):
             "share the reasoning-model budget."
         ),
     )
+    verification_backend: str = Field(
+        default_factory=lambda: os.getenv("WORLD_MODEL_VERIFICATION_BACKEND", "anthropic"),
+        description=(
+            "Coach backend (v0.12.13). 'anthropic' uses AsyncAnthropic against "
+            "api.anthropic.com (unchanged from v0.12.12). 'openai-compatible' "
+            "uses AsyncOpenAI against WORLD_MODEL_VERIFICATION_BASE_URL — works "
+            "with OpenRouter, Ollama, vLLM, LiteLLM, and any OpenAI-shape endpoint. "
+            "Skips the LiteLLM-proxy dance for OpenRouter users."
+        ),
+    )
+    verification_base_url: Optional[str] = Field(
+        default_factory=lambda: os.getenv("WORLD_MODEL_VERIFICATION_BASE_URL"),
+        description=(
+            "Base URL for the openai-compatible verification backend. "
+            "Ignored when verification_backend='anthropic'. Common values:\n"
+            "  OpenRouter:  https://openrouter.ai/api/v1\n"
+            "  Ollama:      http://localhost:11434/v1\n"
+            "  vLLM:        http://localhost:8000/v1"
+        ),
+    )
+    verification_api_key: Optional[str] = Field(
+        default_factory=lambda: os.getenv("WORLD_MODEL_VERIFICATION_API_KEY"),
+        description=(
+            "API key for the openai-compatible verification backend. Falls back "
+            "to OPENROUTER_API_KEY, then OPENAI_API_KEY, then a placeholder for "
+            "local endpoints that don't authenticate. Ignored when "
+            "verification_backend='anthropic'."
+        ),
+    )
     max_facts_per_query: int = Field(
         default_factory=lambda: int(os.getenv("WORLD_MODEL_MAX_FACTS_PER_QUERY", "10"))
     )

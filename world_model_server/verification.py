@@ -111,32 +111,15 @@ def _parse_coach_response(raw_text: str) -> Dict[str, Any]:
     return json.loads(text)
 
 
-async def _run_coach(
-    client: Any,
-    model: str,
-    query: str,
-    answer: str,
-    facts: List[Fact],
+def _normalize_coach_output(
+    parsed: Dict[str, Any],
 ) -> Tuple[List[str], List[str], List[Dict[str, str]], Optional[str]]:
-    """Execute one Coach LLM call. Returns (verified, unverified, pointers, reasoning).
-
-    Raises on any failure; the caller (verify_answer) catches and maps to a
-    LOW-confidence VerificationResult with `error` populated.
-    """
-    user_prompt = _build_coach_user_prompt(query, answer, facts)
-    response = await client.messages.create(
-        model=model,
-        max_tokens=1024,
-        temperature=0.0,  # Deterministic — Coach must not free-associate.
-        system=COACH_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_prompt}],
-    )
-    raw = response.content[0].text
-    parsed = _parse_coach_response(raw)
+    """Shared post-processing: pull verified/unverified/pointers/reasoning
+    out of the parsed JSON in a way that's identical across Anthropic and
+    OpenAI-compatible backends."""
     verified = list(parsed.get("verified_claims") or [])
     unverified = list(parsed.get("unverified_claims") or [])
     pointers = list(parsed.get("source_pointers") or [])
-    # Normalize pointer shape.
     clean_pointers = [
         {"claim": str(p.get("claim", "")), "fact_id": str(p.get("fact_id", ""))}
         for p in pointers
@@ -146,30 +129,90 @@ async def _run_coach(
     return verified, unverified, clean_pointers, reasoning
 
 
+async def _run_coach_anthropic(
+    client: Any,
+    model: str,
+    query: str,
+    answer: str,
+    facts: List[Fact],
+) -> Tuple[List[str], List[str], List[Dict[str, str]], Optional[str]]:
+    """Coach call against the Anthropic messages API. v0.12.12 path."""
+    user_prompt = _build_coach_user_prompt(query, answer, facts)
+    response = await client.messages.create(
+        model=model,
+        max_tokens=1024,
+        temperature=0.0,
+        system=COACH_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    return _normalize_coach_output(_parse_coach_response(response.content[0].text))
+
+
+async def _run_coach_openai_compatible(
+    client: Any,
+    model: str,
+    query: str,
+    answer: str,
+    facts: List[Fact],
+) -> Tuple[List[str], List[str], List[Dict[str, str]], Optional[str]]:
+    """Coach call against an OpenAI-shape chat/completions endpoint. v0.12.13.
+
+    Works against OpenRouter, Ollama, vLLM, LiteLLM, and any endpoint that
+    implements POST /v1/chat/completions. The system prompt moves into the
+    messages list (OpenAI convention); response text lives at
+    response.choices[0].message.content instead of response.content[0].text.
+    Everything else — deterministic temperature, JSON parsing, output
+    shape — matches the Anthropic path.
+    """
+    user_prompt = _build_coach_user_prompt(query, answer, facts)
+    response = await client.chat.completions.create(
+        model=model,
+        max_tokens=1024,
+        temperature=0.0,
+        messages=[
+            {"role": "system", "content": COACH_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    raw = response.choices[0].message.content
+    return _normalize_coach_output(_parse_coach_response(raw))
+
+
+# Public alias for backward compat with v0.12.12 tests that patched
+# _run_coach directly. Kept as a shim over the Anthropic-backend path since
+# the v0.12.12 default was Anthropic.
+_run_coach = _run_coach_anthropic
+
+
 async def verify_answer(
     client: Optional[Any],
     model: str,
     query: str,
     answer: str,
     facts: List[Fact],
+    backend: str = "anthropic",
 ) -> VerificationResult:
     """High-level entry point. Guaranteed to return a VerificationResult;
     never raises. On any failure the result is LOW confidence with the
     error field populated.
 
     Args:
-        client: an AsyncAnthropic instance, or None if no key configured
+        client: an AsyncAnthropic instance (backend='anthropic') or an
+                AsyncOpenAI instance (backend='openai-compatible'), or None
+                if no client could be constructed.
         model:  the verification model id (typically from Config.verification_model)
         query:  the user query the answer responds to
         answer: the candidate answer under verification
         facts:  the source facts the answer claims to be grounded in
+        backend: 'anthropic' (v0.12.12 default) or 'openai-compatible' (v0.12.13).
+                 Determines which _run_coach_* function dispatches the call.
     """
     if client is None:
         return VerificationResult(
             query=query,
             answer=answer,
             confidence="LOW",
-            error="no_anthropic_api_key",
+            error="no_anthropic_api_key" if backend == "anthropic" else "no_verification_client",
         )
     if not answer or not answer.strip():
         # An empty answer has no claims to verify. Not an error, but not
@@ -190,9 +233,14 @@ async def verify_answer(
         )
 
     try:
-        verified, unverified, pointers, reasoning = await _run_coach(
-            client, model, query, answer, facts
-        )
+        if backend == "openai-compatible":
+            verified, unverified, pointers, reasoning = await _run_coach_openai_compatible(
+                client, model, query, answer, facts
+            )
+        else:
+            verified, unverified, pointers, reasoning = await _run_coach_anthropic(
+                client, model, query, answer, facts
+            )
     except json.JSONDecodeError as e:
         logger.exception("Coach returned malformed JSON")
         return VerificationResult(

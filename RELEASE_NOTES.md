@@ -1,5 +1,47 @@
 # World Model MCP - Release Notes
 
+## v0.12.13 (July 2026)
+
+Two follow-ups sourced from engagement threads during the v0.12.12 ship cycle. Additive-only; backward compatible with v0.12.12.
+
+### What ships
+
+- **OpenAI-compatible Coach backend.** Coach can now dispatch through any OpenAI-shape endpoint (OpenRouter, Ollama, vLLM, LiteLLM, self-hosted vLLM/TGI, etc.) without a proxy layer. New config surface:
+  - `WORLD_MODEL_VERIFICATION_BACKEND=openai-compatible` selects the branch
+  - `WORLD_MODEL_VERIFICATION_BASE_URL=https://…/v1` picks the endpoint
+  - `WORLD_MODEL_VERIFICATION_API_KEY=…` overrides key lookup; falls back to `OPENROUTER_API_KEY` → `OPENAI_API_KEY` → placeholder for local endpoints
+  - New optional extra `[openai]` shipping `openai>=1.0` (install with `pip install "world-model-mcp[openai]"`)
+
+  Implementation: `verify_answer(backend=...)` routes to either `_run_coach_anthropic` (v0.12.12 default, unchanged) or `_run_coach_openai_compatible` (new). The OpenAI path calls `chat.completions.create` with the system prompt in the messages list; response parsing pulls from `choices[0].message.content` instead of `content[0].text`. Everything else — deterministic `temperature=0`, JSON schema, confidence banding, never-raises contract — is identical across backends.
+
+  Motivation: the v0.12.12 baseline run required a LiteLLM proxy dance for OpenRouter users. That's fragile (three-layer stack: Anthropic SDK → localhost proxy → LiteLLM → OpenRouter → Claude). This backend lets the same maintainer do the same benchmark run with just two exports: `WORLD_MODEL_VERIFICATION_BACKEND=openai-compatible` and `WORLD_MODEL_VERIFICATION_BASE_URL=https://openrouter.ai/api/v1`.
+
+- **`doctor` Copilot log-signature scan.** New `check_copilot_hook_signatures` check parses `~/.copilot/logs/*.log` for the two documented failure modes from [copilot-cli #4001](https://github.com/github/copilot-cli/issues/4001):
+  - **PowerShell parse errors** — signature `ParserError` in log body. Cause: Copilot on Windows runs `.claude/settings.json` hook commands through PowerShell instead of bash.
+  - **`/.claude/...` path resolution** — signature `/.claude/` in log body. Cause: Copilot doesn't export `$CLAUDE_PROJECT_DIR`; hooks run from cwd `/`, so relative paths resolve to nonexistent absolute ones.
+
+  Reports the two signature counts separately with distinct fix hints. SKIPs gracefully when Copilot isn't installed (`~/.copilot/logs/` absent). Does NOT auto-fix — those are Copilot-side bugs — but separates "my hook wrapper is broken" from "the runtime is running my hook wrong."
+
+### Contract preservation
+
+- Default `verification_backend` is `anthropic` — existing v0.12.12 installs unchanged. The v0.12.12 baseline JSON is reproducible bit-for-bit under this release.
+- Backward-compat shim: `world_model_server.verification._run_coach` is now an alias for `_run_coach_anthropic` so any external code that imported the v0.12.12-shape helper directly keeps working.
+- Never-raises: the OpenAI path swallows exceptions to LOW+error just like the Anthropic path. New error string:
+  - `no_verification_client` — client is None on the openai-compatible path (missing base URL, or `openai` package not installed)
+
+### Test breakdown
+
+- 20 new tests in `tests/test_v01213_openai_coach_backend.py` — Config defaults + env-var wiring, backend routing in verify_answer, OpenAI call shape (system in messages, chat.completions.create, temperature=0), response parsing from choices shape, `_build_openai_compatible_client` handling missing base URL / missing openai package / API key priority, never-raises contract on the openai-compat path
+- 8 new tests in `tests/test_v01213_doctor_copilot_check.py` — skip when Copilot absent, pass when logs present but clean, WARN on each signature independently, WARN on both signatures with separate counts, malformed log doesn't crash the scan, registered in ALL_CHECKS
+- Regression: full suite 682 pass (v0.12.12 baseline 654; +28 net)
+- Contradictions benchmark: 105/105 (100%)
+
+### What's not in this release
+
+- Windows-specific `Get-Command bash` shim detection (Git Bash vs WSL launcher). Requires Windows testing to ship safely — separate patch.
+- `doctor --fix` rewrite of unwrapped hook commands to `bash -c '...'` for Copilot-target runtimes. Speculative without Windows verification; scope-cut.
+- OpenAI-compatible baseline run at N=12 committed alongside the Anthropic one. Straightforward for the maintainer to add post-release (~$0.03) but not blocking.
+
 ## v0.12.12 (July 2026)
 
 Adversarial verification patch. Adds a `verify_retrieval` MCP tool that runs an independent Coach LLM call against a candidate answer + supplied source facts and returns a confidence band with itemized verified / unverified claim lists. Pattern ported from the maintainer's earlier `y=c` project (Coach-Player adversarial cooperation); world-model-mcp is the first MCP server to ship it as a first-class tool.
