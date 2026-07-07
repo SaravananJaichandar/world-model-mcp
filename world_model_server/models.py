@@ -338,6 +338,55 @@ class QueryFactResult(BaseModel):
     alternatives: List[str] = Field(default_factory=list)
 
 
+class VerificationResult(BaseModel):
+    """Result of the Coach adversarial verification pass (v0.12.12).
+
+    A Player synthesizes an answer citing facts from the graph; the Coach
+    is an independent LLM call that checks each claim in the answer against
+    the source facts and produces a confidence band + itemized claim breakdown.
+
+    Confidence bands:
+      HIGH   - 0 unverified claims; every material claim in the answer is
+               backed by a supplied fact.
+      MEDIUM - Some claims unverified, but the answer is mostly grounded
+               (>=70% of claims verified). Caller should surface the
+               unverified list, not the answer wholesale.
+      LOW    - Majority of claims unverified, no facts supplied, or the
+               Coach LLM call failed. Caller should NOT trust the answer.
+               The `error` field is populated when LOW is due to Coach failure.
+
+    Contract: never raises. On any failure the result is a LOW-confidence
+    verdict with `error` populated, matching v0.12.9's best-effort hook
+    convention.
+    """
+
+    query: str = Field(..., description="Original query the answer responds to")
+    answer: str = Field(..., description="The answer under verification")
+    confidence: Literal["HIGH", "MEDIUM", "LOW"]
+    verified_claims: List[str] = Field(
+        default_factory=list,
+        description="Claims that Coach mapped to a supporting fact",
+    )
+    unverified_claims: List[str] = Field(
+        default_factory=list,
+        description="Claims Coach could not map to any supplied fact",
+    )
+    source_pointers: List[Dict[str, str]] = Field(
+        default_factory=list,
+        description="[{claim, fact_id}] mapping verified claims to source facts",
+    )
+    coach_reasoning: Optional[str] = Field(
+        None, description="Coach's short rationale (non-load-bearing; for audit)"
+    )
+    error: Optional[str] = Field(
+        None,
+        description=(
+            "Non-None if the Coach call failed (API error, malformed response, "
+            "no API key). When set, confidence is always LOW."
+        ),
+    )
+
+
 class BugInfo(BaseModel):
     """Information about a bug fix."""
 

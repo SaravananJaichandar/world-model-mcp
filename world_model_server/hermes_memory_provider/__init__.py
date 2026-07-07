@@ -71,6 +71,7 @@ SURFACED_TOOL_NAMES = (
     "record_correction",
     "find_contradictions",
     "resolve_contradiction",
+    "verify_retrieval",
 )
 
 
@@ -448,6 +449,27 @@ def _surfaced_tool_schemas():
                 "query": {"type": "string"},
                 "limit": {"type": "integer"},
             },
+        },
+    }
+    yield {
+        "name": "verify_retrieval",
+        "description": (
+            "Adversarially verify that an answer is grounded in a specific "
+            "set of facts. An independent Coach LLM call checks each material "
+            "claim in the answer against the supplied source facts. Returns "
+            "confidence (HIGH / MEDIUM / LOW), verified + unverified claim "
+            "lists, and per-claim source_pointers. Never raises; failures "
+            "return LOW + `error` populated. v0.12.12."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "answer": {"type": "string"},
+                "fact_ids": {"type": "array", "items": {"type": "string"}},
+                "verification_model": {"type": "string"},
+            },
+            "required": ["query", "answer", "fact_ids"],
         },
     }
     yield {

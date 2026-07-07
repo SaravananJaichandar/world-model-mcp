@@ -1,0 +1,144 @@
+{
+  "$comment": "v0.12.12 initial 12-pair labeled set for the Coach-Player benchmark. 4 grounded (answer fully supported by facts), 4 partial (mostly supported, 1-2 unsupported claims), 4 hallucinated (major claims not supported by any fact). Post-launch target: expand to 30+.",
+  "pairs": [
+    {
+      "id": "g1",
+      "category": "grounded",
+      "expected_confidence": "HIGH",
+      "query": "How does POST /users authenticate?",
+      "answer": "POST /users requires a JWT bearer token.",
+      "facts": [
+        {"id": "f1", "fact_text": "POST /users requires JWT authentication in the Authorization header", "evidence_path": "src/api/users.ts:42"}
+      ]
+    },
+    {
+      "id": "g2",
+      "category": "grounded",
+      "expected_confidence": "HIGH",
+      "query": "What is the retry policy for the payment webhook?",
+      "answer": "The payment webhook retries three times with exponential backoff starting at one second.",
+      "facts": [
+        {"id": "f1", "fact_text": "Payment webhook retries 3 times with exponential backoff starting at 1s", "evidence_path": "src/webhooks/payments.ts:88"}
+      ]
+    },
+    {
+      "id": "g3",
+      "category": "grounded",
+      "expected_confidence": "HIGH",
+      "query": "Which database does the session store use?",
+      "answer": "Sessions are stored in Redis with a 24-hour expiry.",
+      "facts": [
+        {"id": "f1", "fact_text": "Session store backed by Redis", "evidence_path": "src/config/sessions.ts:10"},
+        {"id": "f2", "fact_text": "Session expiry is 24 hours", "evidence_path": "src/config/sessions.ts:15"}
+      ]
+    },
+    {
+      "id": "g4",
+      "category": "grounded",
+      "expected_confidence": "HIGH",
+      "query": "How is user email uniqueness enforced?",
+      "answer": "Email uniqueness is enforced at the database layer via a unique index on the email column of the users table.",
+      "facts": [
+        {"id": "f1", "fact_text": "users table has UNIQUE index on email column", "evidence_path": "migrations/001_users.sql:12"}
+      ]
+    },
+    {
+      "id": "p1",
+      "category": "partial",
+      "expected_confidence": "MEDIUM",
+      "$note": "3 verified + 1 unverified = 75% → MEDIUM (>=70%)",
+      "query": "Describe the /users endpoint behavior.",
+      "answer": "POST /users requires JWT authentication, returns 201 on success, validates email format server-side, and is rate-limited to sixty requests per minute.",
+      "facts": [
+        {"id": "f1", "fact_text": "POST /users requires JWT authentication", "evidence_path": "src/api/users.ts:42"},
+        {"id": "f2", "fact_text": "POST /users returns 201 on success", "evidence_path": "src/api/users.ts:60"},
+        {"id": "f3", "fact_text": "POST /users validates email format server-side using RFC 5322", "evidence_path": "src/api/users.ts:55"}
+      ]
+    },
+    {
+      "id": "p2",
+      "category": "partial",
+      "expected_confidence": "MEDIUM",
+      "$note": "3 verified + 1 unverified = 75% → MEDIUM",
+      "query": "Explain the auth middleware flow.",
+      "answer": "The auth middleware validates the JWT signature, extracts the user ID from the sub claim, loads the user record from the database, and refreshes the token if it expires within five minutes.",
+      "facts": [
+        {"id": "f1", "fact_text": "Auth middleware validates JWT signature using RS256", "evidence_path": "src/middleware/auth.ts:20"},
+        {"id": "f2", "fact_text": "User ID is extracted from the JWT sub claim", "evidence_path": "src/middleware/auth.ts:35"},
+        {"id": "f3", "fact_text": "Auth middleware loads user record from Postgres", "evidence_path": "src/middleware/auth.ts:42"}
+      ]
+    },
+    {
+      "id": "p3",
+      "category": "partial",
+      "expected_confidence": "MEDIUM",
+      "$note": "3 verified + 1 unverified = 75% → MEDIUM",
+      "query": "What is the deployment process?",
+      "answer": "Deploys use GitHub Actions to build a Docker image, push to ECR, then update the ECS service via Terraform apply. Rollbacks are automatic on 5xx spike.",
+      "facts": [
+        {"id": "f1", "fact_text": "GitHub Actions workflow builds a Docker image on push to main", "evidence_path": ".github/workflows/deploy.yml:15"},
+        {"id": "f2", "fact_text": "Docker image is pushed to AWS ECR", "evidence_path": ".github/workflows/deploy.yml:32"},
+        {"id": "f3", "fact_text": "ECS service update runs via Terraform apply", "evidence_path": ".github/workflows/deploy.yml:50"}
+      ]
+    },
+    {
+      "id": "p4",
+      "category": "partial",
+      "expected_confidence": "MEDIUM",
+      "$note": "3 verified + 1 unverified = 75% → MEDIUM",
+      "query": "How does the search API rank results?",
+      "answer": "Search results are ranked by BM25 score, boosted by recency, filtered by user access permissions, and re-ranked using a neural model trained on click-through data.",
+      "facts": [
+        {"id": "f1", "fact_text": "Search ranking uses BM25 scoring on the primary text index", "evidence_path": "src/search/rank.ts:12"},
+        {"id": "f2", "fact_text": "Search results are boosted by recency (last-modified date)", "evidence_path": "src/search/rank.ts:45"},
+        {"id": "f3", "fact_text": "Search filters results by user access permissions before ranking", "evidence_path": "src/search/rank.ts:8"}
+      ]
+    },
+    {
+      "id": "h1",
+      "category": "hallucinated",
+      "expected_confidence": "LOW",
+      "$note": "0 of 3 claims verified — Coach must not invent support",
+      "query": "How does POST /users authenticate?",
+      "answer": "POST /users uses OAuth 2.0 with PKCE, tokens signed by HS512, and rotates keys every 90 days.",
+      "facts": [
+        {"id": "f1", "fact_text": "POST /users requires JWT authentication in the Authorization header", "evidence_path": "src/api/users.ts:42"}
+      ]
+    },
+    {
+      "id": "h2",
+      "category": "hallucinated",
+      "expected_confidence": "LOW",
+      "$note": "Answer references an endpoint that isn't in the facts at all",
+      "query": "How does the /admin/reset-passwords endpoint work?",
+      "answer": "The /admin/reset-passwords endpoint accepts a batch of user IDs, generates temporary passwords, emails them via SES, and logs the operation to Splunk.",
+      "facts": [
+        {"id": "f1", "fact_text": "POST /users requires JWT authentication", "evidence_path": "src/api/users.ts:42"},
+        {"id": "f2", "fact_text": "GET /users/{id} returns a user profile", "evidence_path": "src/api/users.ts:100"}
+      ]
+    },
+    {
+      "id": "h3",
+      "category": "hallucinated",
+      "expected_confidence": "LOW",
+      "$note": "Every claim contradicts or invents",
+      "query": "Which database does the session store use?",
+      "answer": "Sessions are stored in DynamoDB with a global secondary index on user_id and a 7-day TTL managed by Lambda triggers.",
+      "facts": [
+        {"id": "f1", "fact_text": "Session store backed by Redis", "evidence_path": "src/config/sessions.ts:10"},
+        {"id": "f2", "fact_text": "Session expiry is 24 hours", "evidence_path": "src/config/sessions.ts:15"}
+      ]
+    },
+    {
+      "id": "h4",
+      "category": "hallucinated",
+      "expected_confidence": "LOW",
+      "$note": "Confident-sounding but every technical claim is invented",
+      "query": "What is the caching strategy?",
+      "answer": "The cache layer uses a two-tier design: L1 is an in-process LRU with a 50MB budget, L2 is a Redis cluster with consistent hashing across three shards, and cache entries are invalidated by a change-data-capture stream from Postgres.",
+      "facts": [
+        {"id": "f1", "fact_text": "Rate limiting uses a token bucket with 60 requests per minute", "evidence_path": "src/middleware/ratelimit.ts:20"}
+      ]
+    }
+  ]
+}
