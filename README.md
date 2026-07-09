@@ -33,6 +33,20 @@ Think of it as a long-term memory layer that runs alongside Claude Code, Cursor,
 
 ---
 
+## See it working
+
+Three cloneable starter repos show world-model-mcp wired into a real Python (FastAPI + SQLAlchemy) project across the three highest-adoption MCP runtimes. Each ships 5 seeded constraints, 1 bug-fix reflection, and a `WHAT_TO_TRY.md` with concrete workflows. Fork one, `pip install`, and see the memory layer catch a constraint violation on the first edit.
+
+| Starter | Runtime | Config shape | Automatic enforcement |
+| --- | --- | --- | --- |
+| [world-model-mcp-claude-code-starter](https://github.com/SaravananJaichandar/world-model-mcp-claude-code-starter) | Claude Code CLI | `.mcp.json` + `.claude/settings.json` | Yes (4 lifecycle hook events) |
+| [world-model-mcp-cursor-starter](https://github.com/SaravananJaichandar/world-model-mcp-cursor-starter) | Cursor Editor | `.cursor/mcp.json` + `.cursor/hooks.json` | Yes (3 lifecycle hook events) |
+| [world-model-mcp-copilot-chat-starter](https://github.com/SaravananJaichandar/world-model-mcp-copilot-chat-starter) | VS Code + Copilot Chat | `.vscode/mcp.json` (`"servers"` key, not `"mcpServers"`) | No — Copilot Chat lacks lifecycle hooks; memory queryable via MCP tool calls only |
+
+All three point at the same `.claude/world-model/` DB path, so installing multiple starters (or all three) on one repo produces a shared fact graph across runtimes.
+
+---
+
 ## What's new in v0.12.13
 
 - **OpenAI-compatible Coach backend.** `verify_retrieval` (v0.12.12's adversarial verification tool) can now route Coach calls through any OpenAI-shape endpoint — OpenRouter, Ollama, vLLM, LiteLLM, or a self-hosted deployment — without going through a proxy. Set `WORLD_MODEL_VERIFICATION_BACKEND=openai-compatible` and `WORLD_MODEL_VERIFICATION_BASE_URL=https://openrouter.ai/api/v1` (or your endpoint of choice); the Coach client is built via `AsyncOpenAI(base_url=...)` and dispatches through `chat.completions.create` with the system prompt in the messages list (OpenAI convention). API key priority: explicit `WORLD_MODEL_VERIFICATION_API_KEY` → `OPENROUTER_API_KEY` → `OPENAI_API_KEY` → a placeholder for local endpoints that don't authenticate. New optional `[openai]` extra ships `openai>=1.0`. Backward compat: default backend stays `anthropic`; existing installs and the v0.12.12 baseline are unaffected.
