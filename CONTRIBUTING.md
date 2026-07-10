@@ -2,6 +2,10 @@
 
 Thank you for your interest in contributing to World Model MCP! This document provides guidelines and instructions for contributing.
 
+## Contributor License Agreement (CLA)
+
+Before your first pull request can be merged, you will be asked to sign our [Contributor License Agreement](./CLA.md). The CLA bot will comment on your PR with instructions — you sign by posting a single confirmation comment, and your signature is recorded once and covers all your future contributions. The CLA preserves the project's option to relicense (for example, moving to a dual-license structure alongside a hosted commercial offering later) without needing to track down every past contributor. If you have questions about the CLA, open a discussion before your first PR.
+
 ## 🌟 Ways to Contribute
 
 - **Report Bugs**: Open an issue describing the bug and how to reproduce it
