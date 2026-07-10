@@ -7,6 +7,7 @@ Implements temporal fact storage, entity resolution, and relationship tracking.
 import aiosqlite
 import json
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -22,6 +23,39 @@ from .models import (
     Decision,
     TestOutcome,
 )
+
+
+# FTS5 metacharacters that break MATCH expressions when they appear in raw
+# user queries: ? * " - + ( ) : ^ (and the reserved AND/OR/NOT/NEAR keywords).
+# Strip them, then quote-wrap each remaining token so anything we missed
+# is treated as a literal phrase rather than parsed as an operator.
+_FTS5_META = re.compile(r'[?*"()\-+:^]')
+
+
+def sanitize_fts5_query(query: str) -> str:
+    """
+    Turn an arbitrary user query into a valid FTS5 MATCH expression.
+
+    Removes FTS5 metacharacters and quote-wraps each remaining token. Reserved
+    operator words (AND/OR/NOT/NEAR) are lowercased before quoting so they
+    match content instead of being parsed as operators. Returns an empty
+    quoted phrase for empty input so the caller still gets a valid expression.
+    """
+    if not query or not query.strip():
+        return '""'
+    cleaned = _FTS5_META.sub(' ', query)
+    tokens = [t for t in cleaned.split() if t]
+    if not tokens:
+        return '""'
+    reserved = {"AND", "OR", "NOT", "NEAR"}
+    quoted: List[str] = []
+    for t in tokens:
+        if t in reserved:
+            t = t.lower()
+        # Defensively escape any surviving double quotes by doubling them,
+        # per FTS5 phrase-literal escaping rules.
+        quoted.append(f'"{t.replace(chr(34), chr(34) + chr(34))}"')
+    return ' '.join(quoted)
 
 
 class KnowledgeGraph:
@@ -694,25 +728,39 @@ class KnowledgeGraph:
         async with aiosqlite.connect(self.facts_db) as db:
             db.row_factory = aiosqlite.Row
 
-            # Full-text search
+            # Full-text search. Try the raw query first so intentional FTS5
+            # operator syntax (Legacy OR async, "phrase match", etc) still
+            # works for internal callers. Fall back to a sanitized version
+            # if FTS5 rejects the raw query — this covers user-facing queries
+            # with metacharacters like `?` that would otherwise crash
+            # (v0.12.14 — bug found via TS SDK dogfooding).
             sql_query = """
                 SELECT f.* FROM facts f
                 JOIN facts_fts fts ON f.rowid = fts.rowid
                 WHERE facts_fts MATCH ?
             """
-            params: List[Any] = [query]
-
+            extra = ""
+            extra_params: List[Any] = []
             if current_only:
-                sql_query += " AND f.invalid_at IS NULL"
-
+                extra += " AND f.invalid_at IS NULL"
             if content_type is not None:
-                sql_query += " AND f.content_type = ?"
-                params.append(content_type)
+                extra += " AND f.content_type = ?"
+                extra_params.append(content_type)
+            extra += " ORDER BY f.confidence DESC, f.created_at DESC LIMIT 10"
 
-            sql_query += " ORDER BY f.confidence DESC, f.created_at DESC LIMIT 10"
-
-            cursor = await db.execute(sql_query, params)
-            rows = await cursor.fetchall()
+            try:
+                cursor = await db.execute(
+                    sql_query + extra, [query] + extra_params
+                )
+                rows = await cursor.fetchall()
+            except aiosqlite.OperationalError as e:
+                if "fts5" not in str(e).lower():
+                    raise
+                cursor = await db.execute(
+                    sql_query + extra,
+                    [sanitize_fts5_query(query)] + extra_params,
+                )
+                rows = await cursor.fetchall()
 
             # v0.8.0 F1: apply domain-aware decay on read. Pure
             # computation, no DB writes here; row-level last_decay_at
@@ -1513,12 +1561,15 @@ class KnowledgeGraph:
         async with aiosqlite.connect(self.facts_db) as db:
             db.row_factory = aiosqlite.Row
             if query:
-                cursor = await db.execute(
-                    """SELECT f.* FROM facts f
-                       JOIN facts_fts fts ON f.rowid = fts.rowid
-                       WHERE facts_fts MATCH ? LIMIT 200""",
-                    (query,),
-                )
+                fts_sql = """SELECT f.* FROM facts f
+                             JOIN facts_fts fts ON f.rowid = fts.rowid
+                             WHERE facts_fts MATCH ? LIMIT 200"""
+                try:
+                    cursor = await db.execute(fts_sql, (query,))
+                except aiosqlite.OperationalError as e:
+                    if "fts5" not in str(e).lower():
+                        raise
+                    cursor = await db.execute(fts_sql, (sanitize_fts5_query(query),))
             else:
                 cursor = await db.execute("SELECT * FROM facts ORDER BY created_at DESC LIMIT 200")
             rows = await cursor.fetchall()

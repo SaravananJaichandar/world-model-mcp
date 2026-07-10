@@ -844,12 +844,8 @@ class WorldModelTools:
         bugs_task = self.kg.get_bugs_for_file(file_path)
         co_edits_task = self.kg.get_co_edited_files(file_path, limit=10)
 
-        # query_facts can fail with FTS5 syntax errors on file paths with dots/slashes
-        try:
-            facts_result = await self.kg.query_facts(file_path)
-            related_facts = facts_result.facts[:5]
-        except Exception:
-            related_facts = []
+        facts_result = await self.kg.query_facts(file_path)
+        related_facts = facts_result.facts[:5]
 
         constraints = await constraints_task
         decisions = await decisions_task
