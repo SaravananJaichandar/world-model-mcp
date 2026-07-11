@@ -527,6 +527,49 @@ async def main():
                     "required": ["query", "answer", "fact_ids"],
                 },
             ),
+            Tool(
+                name="prove_entry_inclusion",
+                description=(
+                    "v0.13 tamper-evident audit log. Return a cryptographic "
+                    "inclusion-proof bundle for a persisted row_id (fact, "
+                    "constraint, event, or decision ID). Bundle includes the "
+                    "entry, the containing signed epoch (Ed25519 + SLH-DSA "
+                    "hybrid signature envelope), an RFC 6962 Merkle inclusion "
+                    "proof, and the full epoch chain from genesis. Requires "
+                    "WORLD_MODEL_AUDIT_LOG=on at server startup; returns an "
+                    "error object when opt-in is off, when the row_id is not "
+                    "found, or when the entry is in the unclosed backlog."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "row_id": {
+                            "type": "string",
+                            "description": (
+                                "ID of the fact / constraint / event / "
+                                "decision to prove inclusion for."
+                            ),
+                        },
+                    },
+                    "required": ["row_id"],
+                },
+            ),
+            Tool(
+                name="get_audit_log_head",
+                description=(
+                    "v0.13 tamper-evident audit log. Return the current head "
+                    "state (last log entry seq, last closed epoch seq, "
+                    "unclosed-entry count) plus the full closed-epoch chain "
+                    "with hybrid signature envelopes. Compliance auditors "
+                    "call this periodically to verify no operator misbehavior "
+                    "has occurred since the last check. Requires "
+                    "WORLD_MODEL_AUDIT_LOG=on at server startup."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -757,6 +800,16 @@ async def main():
                     verification_model=arguments.get("verification_model"),
                 )
                 return [TextContent(type="text", text=result.model_dump_json(indent=2))]
+
+            elif name == "prove_entry_inclusion":
+                result = await tools.prove_entry_inclusion(
+                    row_id=arguments["row_id"],
+                )
+                return [TextContent(type="text", text=result)]
+
+            elif name == "get_audit_log_head":
+                result = await tools.get_audit_log_head()
+                return [TextContent(type="text", text=result)]
 
             else:
                 error_msg = f"Unknown tool: {name}"

@@ -517,7 +517,271 @@ async def close_epoch(db: Any, signer: Any) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Verifier — read-side chain integrity check
+# Proof generation (v0.13 week 5 — read side)
+# ---------------------------------------------------------------------------
+
+
+async def _find_entry_by_row_id(db: Any, row_id: str) -> Optional[dict]:
+    """
+    Return the single most-recent entry for this row_id, or None. Used when
+    building an inclusion proof from a caller-supplied row_id. Uses the
+    existing idx_tamper_evident_row_id index.
+    """
+    cursor = await db.execute(
+        "SELECT seq, kind, row_id, row_hash, prev_hash, entry_hash, ts "
+        "FROM tamper_evident_log WHERE row_id = ? ORDER BY seq DESC LIMIT 1",
+        (row_id,),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return dict(
+        seq=row[0], kind=row[1], row_id=row[2], row_hash=row[3],
+        prev_hash=row[4], entry_hash=row[5], ts=row[6],
+    )
+
+
+async def _epoch_containing_seq(db: Any, entry_seq: int) -> Optional[dict]:
+    """
+    Return the closed epoch that contains `entry_seq`, or None if the entry
+    is not yet sealed in any closed epoch.
+    """
+    cursor = await db.execute(
+        "SELECT seq, merkle_root, prev_epoch_root, first_entry_seq, "
+        "last_entry_seq, entry_count, signature_envelope, closed_at "
+        "FROM tamper_evident_epochs "
+        "WHERE first_entry_seq <= ? AND last_entry_seq >= ? "
+        "LIMIT 1",
+        (entry_seq, entry_seq),
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return dict(
+        seq=row[0], merkle_root=row[1], prev_epoch_root=row[2],
+        first_entry_seq=row[3], last_entry_seq=row[4], entry_count=row[5],
+        signature_envelope=row[6], closed_at=row[7],
+    )
+
+
+async def _fetch_epoch_row_hashes(
+    db: Any, first_seq: int, last_seq: int
+) -> list[bytes]:
+    """
+    Return the raw row_hash bytes (post-`sha256:` prefix strip) for all
+    entries in [first_seq, last_seq] inclusive, in seq order. These feed
+    directly into merkle.leaf_hash() to reconstruct the epoch's tree.
+    """
+    cursor = await db.execute(
+        "SELECT row_hash FROM tamper_evident_log "
+        "WHERE seq BETWEEN ? AND ? ORDER BY seq ASC",
+        (first_seq, last_seq),
+    )
+    rows = await cursor.fetchall()
+    return [bytes.fromhex(row[0].split(":", 1)[1]) for row in rows]
+
+
+async def _fetch_all_epochs(db: Any) -> list[dict]:
+    """Return all closed epochs in seq order."""
+    cursor = await db.execute(
+        "SELECT seq, merkle_root, prev_epoch_root, first_entry_seq, "
+        "last_entry_seq, entry_count, signature_envelope, closed_at "
+        "FROM tamper_evident_epochs ORDER BY seq ASC"
+    )
+    rows = await cursor.fetchall()
+    return [
+        dict(
+            seq=r[0], merkle_root=r[1], prev_epoch_root=r[2],
+            first_entry_seq=r[3], last_entry_seq=r[4], entry_count=r[5],
+            signature_envelope=r[6], closed_at=r[7],
+        )
+        for r in rows
+    ]
+
+
+async def get_inclusion_proof(db: Any, row_id: str) -> dict:
+    """
+    Build a full inclusion-proof bundle for a persisted row_id.
+
+    Returns everything an external verifier needs to independently confirm:
+      1. The entry with this row_id was included in a signed epoch, and
+      2. The epoch chain from genesis up to that epoch is intact.
+
+    Raises ValueError if the entry does not exist OR is not yet sealed in
+    any closed epoch. The second case is transient — the auditor should
+    retry after the next epoch closes.
+    """
+    from . import merkle
+
+    entry = await _find_entry_by_row_id(db, row_id)
+    if entry is None:
+        raise ValueError(f"row_id not found in tamper-evident log: {row_id!r}")
+
+    epoch = await _epoch_containing_seq(db, entry["seq"])
+    if epoch is None:
+        raise ValueError(
+            f"entry seq={entry['seq']} is not yet sealed in a closed epoch — "
+            "retry after the next epoch close"
+        )
+
+    # Rebuild the epoch's Merkle tree to derive the inclusion proof.
+    row_hashes = await _fetch_epoch_row_hashes(
+        db, epoch["first_entry_seq"], epoch["last_entry_seq"]
+    )
+    hashed_leaves = [merkle.leaf_hash(rh) for rh in row_hashes]
+    leaf_index = entry["seq"] - epoch["first_entry_seq"]
+    proof = merkle.inclusion_proof(leaf_index, hashed_leaves)
+
+    # All closed epochs up to and including the containing one — the
+    # auditor walks this to verify prev_epoch_root chaining.
+    all_epochs = await _fetch_all_epochs(db)
+    chain = [e for e in all_epochs if e["seq"] <= epoch["seq"]]
+
+    # Parse signature envelopes so the caller does not double-parse.
+    envelope = json.loads(epoch["signature_envelope"])
+    for e in chain:
+        if isinstance(e["signature_envelope"], str):
+            e["signature_envelope"] = json.loads(e["signature_envelope"])
+
+    return {
+        "row_id": row_id,
+        "entry_seq": entry["seq"],
+        "entry_kind": entry["kind"],
+        "row_hash": entry["row_hash"],
+        "prev_hash": entry["prev_hash"],
+        "entry_hash": entry["entry_hash"],
+        "entry_ts": entry["ts"],
+        "epoch": {
+            "seq": epoch["seq"],
+            "merkle_root": epoch["merkle_root"],
+            "prev_epoch_root": epoch["prev_epoch_root"],
+            "first_entry_seq": epoch["first_entry_seq"],
+            "last_entry_seq": epoch["last_entry_seq"],
+            "entry_count": epoch["entry_count"],
+            "signature_envelope": envelope,
+            "closed_at": epoch["closed_at"],
+        },
+        "inclusion": {
+            "leaf_index": leaf_index,
+            "tree_size": len(hashed_leaves),
+            "proof": [h.hex() for h in proof],
+        },
+        "epoch_chain": chain,
+    }
+
+
+async def get_audit_log_head(db: Any) -> dict:
+    """
+    Return the current audit-log head + full closed-epoch chain, without a
+    specific entry to prove. Auditors use this for periodic chain-integrity
+    checks: verify every signature, verify every prev_epoch_root link,
+    confirm the head is still advancing.
+    """
+    cursor = await db.execute(
+        "SELECT COALESCE(MAX(seq), 0) FROM tamper_evident_log"
+    )
+    row = await cursor.fetchone()
+    head_entry_seq = int(row[0]) if row else 0
+
+    last_epoch = await _last_closed_epoch(db)
+    all_epochs = await _fetch_all_epochs(db)
+    for e in all_epochs:
+        if isinstance(e["signature_envelope"], str):
+            e["signature_envelope"] = json.loads(e["signature_envelope"])
+
+    unclosed = await _unclosed_entry_count(db)
+
+    return {
+        "head_entry_seq": head_entry_seq,
+        "head_epoch_seq": last_epoch["seq"] if last_epoch else 0,
+        "unclosed_entry_count": unclosed,
+        "epoch_chain": all_epochs,
+        "genesis_entry_hash": GENESIS_HASH,
+        "genesis_epoch_root": EPOCH_GENESIS_ROOT,
+    }
+
+
+def verify_inclusion_bundle(
+    bundle: dict,
+    ed25519_public_key: bytes,
+    slh_dsa_public_key: bytes,
+) -> tuple[bool, Optional[str]]:
+    """
+    Read-side verifier for the bundle produced by `get_inclusion_proof`.
+
+    Checks, in order:
+      1. Every epoch in the chain has a signature envelope that verifies
+         under the supplied hybrid public keys against the canonical
+         payload.
+      2. Each `prev_epoch_root` matches the previous epoch's `merkle_root`
+         (or `EPOCH_GENESIS_ROOT` for the first).
+      3. The containing epoch's Merkle inclusion proof verifies for the
+         entry's `row_hash` at `leaf_index` against `epoch.merkle_root`.
+
+    Returns `(True, None)` on success, `(False, reason)` on the first
+    failure.
+
+    This is the contract the standalone TypeScript reference verifier must
+    reproduce byte-for-byte.
+    """
+    from . import hybrid_signer as hs
+    from . import merkle
+
+    # Step 1 + 2: verify epoch signatures and prev-root chaining.
+    prev_root = EPOCH_GENESIS_ROOT
+    for e in bundle.get("epoch_chain", []):
+        if e["prev_epoch_root"] != prev_root:
+            return (
+                False,
+                f"epoch {e['seq']}: prev_epoch_root does not chain "
+                f"(expected {prev_root}, got {e['prev_epoch_root']})",
+            )
+        payload = {
+            "merkle_root": e["merkle_root"],
+            "prev_epoch_root": e["prev_epoch_root"],
+            "first_entry_seq": e["first_entry_seq"],
+            "last_entry_seq": e["last_entry_seq"],
+            "entry_count": e["entry_count"],
+            "closed_at": e["closed_at"],
+        }
+        signed_bytes = canonical_json(payload)
+        env = e["signature_envelope"]
+        if not hs.verify_hybrid(
+            envelope=env,
+            message=signed_bytes,
+            ed25519_public_key=ed25519_public_key,
+            slh_dsa_public_key=slh_dsa_public_key,
+        ):
+            return False, f"epoch {e['seq']}: hybrid signature does not verify"
+        prev_root = e["merkle_root"]
+
+    # Step 3: verify entry inclusion in the containing epoch's Merkle tree.
+    epoch = bundle["epoch"]
+    inclusion = bundle["inclusion"]
+    row_hash_hex = bundle["row_hash"].split(":", 1)[1]
+    leaf = merkle.leaf_hash(bytes.fromhex(row_hash_hex))
+    proof_bytes = [bytes.fromhex(h) for h in inclusion["proof"]]
+    expected_root_hex = epoch["merkle_root"].split(":", 1)[1]
+    expected_root = bytes.fromhex(expected_root_hex)
+
+    if not merkle.verify_inclusion(
+        leaf=leaf,
+        index=inclusion["leaf_index"],
+        tree_size=inclusion["tree_size"],
+        proof=proof_bytes,
+        expected_root=expected_root,
+    ):
+        return (
+            False,
+            f"inclusion proof failed for row_id {bundle['row_id']!r} "
+            f"at index {inclusion['leaf_index']} in epoch {epoch['seq']}",
+        )
+
+    return True, None
+
+
+# ---------------------------------------------------------------------------
+# Entry-chain verifier — checks the hash chain of the tamper_evident_log itself
 # ---------------------------------------------------------------------------
 
 
