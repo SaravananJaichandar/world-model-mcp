@@ -1269,3 +1269,77 @@ class WorldModelTools:
             facts=facts,
             backend=backend,
         )
+
+    # ============================================================================
+    # v0.13: tamper-evident audit log — proof APIs
+    # ============================================================================
+
+    async def prove_entry_inclusion(self, row_id: str) -> str:
+        """
+        Return a cryptographic inclusion-proof bundle for the given row_id
+        as JSON. Compliance auditors call this to independently verify
+        that a specific fact / event / decision / constraint write was
+        recorded in a signed epoch of the tamper-evident audit log.
+
+        The bundle includes:
+          - The entry (row_hash, kind, seq, ts, entry_hash chain link)
+          - The containing closed epoch (Merkle root, prev_epoch_root,
+            hybrid signature envelope, closed_at)
+          - The RFC 6962 inclusion proof (leaf_index, tree_size, siblings)
+          - The full epoch chain from genesis so the auditor can walk
+            prev_epoch_root links in one round-trip
+
+        Returns an error object when:
+          - Opt-in is off (WORLD_MODEL_AUDIT_LOG unset) → nothing to prove
+          - row_id is not found in the audit log
+          - The entry is in the unclosed backlog → auditor should retry
+            after the next epoch close
+        """
+        import aiosqlite
+        import json as _json
+        from . import tamper_evident
+
+        if not self.kg.tamper_evident_enabled:
+            return _json.dumps(
+                {
+                    "error": (
+                        "tamper-evident audit log is not opted in. Set "
+                        "WORLD_MODEL_AUDIT_LOG=on and restart to enable."
+                    ),
+                    "kind": "not_enabled",
+                }
+            )
+
+        async with aiosqlite.connect(self.kg.audit_db) as db:
+            try:
+                bundle = await tamper_evident.get_inclusion_proof(db, row_id)
+                return _json.dumps(bundle, indent=2)
+            except ValueError as exc:
+                kind = "unclosed" if "not yet sealed" in str(exc) else "not_found"
+                return _json.dumps({"error": str(exc), "kind": kind})
+
+    async def get_audit_log_head(self) -> str:
+        """
+        Return the current audit-log head + full closed-epoch chain as JSON.
+        Compliance auditors call this for periodic chain-integrity checks:
+        walk every prev_epoch_root link and verify every signature.
+        Returns an error object when opt-in is off.
+        """
+        import aiosqlite
+        import json as _json
+        from . import tamper_evident
+
+        if not self.kg.tamper_evident_enabled:
+            return _json.dumps(
+                {
+                    "error": (
+                        "tamper-evident audit log is not opted in. Set "
+                        "WORLD_MODEL_AUDIT_LOG=on and restart to enable."
+                    ),
+                    "kind": "not_enabled",
+                }
+            )
+
+        async with aiosqlite.connect(self.kg.audit_db) as db:
+            head = await tamper_evident.get_audit_log_head(db)
+            return _json.dumps(head, indent=2)
