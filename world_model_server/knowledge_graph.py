@@ -161,11 +161,18 @@ class KnowledgeGraph:
         self, kind: str, row_id: str, payload: dict
     ) -> None:
         """
-        Append a tamper-evident log entry for a durable write.
+        Append a tamper-evident log entry for a durable write; close the
+        current epoch if the append pushed the unclosed-entry count over
+        the threshold.
 
         No-op when opt-in is off (the common case for existing users). When
         opt-in is on, opens a connection to `audit_db`, appends via the
-        chain-hashed primitive in `tamper_evident.append_entry`, and commits.
+        chain-hashed primitive in `tamper_evident.append_entry`, and — if
+        the epoch is now full — Merkle-trees the epoch's entries, signs
+        the root with the on-disk HybridSigner (creating fresh keys on
+        first close), and persists the epoch row. Everything happens in a
+        single connection so the append + epoch close either both persist
+        or neither does.
 
         Called AFTER the primary write commits. If this raises, the primary
         write has already persisted — the caller sees the exception and can
@@ -184,6 +191,14 @@ class KnowledgeGraph:
 
         async with aiosqlite.connect(self.audit_db) as db:
             await tamper_evident.append_entry(db, kind, row_id, payload)
+            # Check-on-append epoch close. Time-based close is a v0.14
+            # addition; v0.13 is size-based only. The threshold is
+            # 1024 by default (env-overridable for tests and operators).
+            if await tamper_evident.should_close_epoch(db):
+                from . import audit_keys
+
+                signer = audit_keys.load_or_create_signer(self.db_path)
+                await tamper_evident.close_epoch(db, signer)
             await db.commit()
 
     async def _existing_columns(self, db, table: str) -> set:

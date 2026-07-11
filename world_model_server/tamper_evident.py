@@ -33,8 +33,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any, Iterable, Optional
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -182,8 +183,9 @@ CREATE_INDEXES = [
 
 async def create_schema(db: Any) -> None:
     """
-    Idempotent DDL to create the tamper-evident log table, triggers, and
-    indexes on the supplied aiosqlite connection.
+    Idempotent DDL to create the tamper-evident log table, the epoch
+    table, all append-only triggers, and secondary indexes on the supplied
+    aiosqlite connection.
 
     `db` is an aiosqlite connection object; typed as Any to keep this module
     dependency-free.
@@ -193,6 +195,7 @@ async def create_schema(db: Any) -> None:
         await db.execute(trigger)
     for index in CREATE_INDEXES:
         await db.execute(index)
+    await _create_epoch_schema(db)
     await db.commit()
 
 
@@ -275,6 +278,241 @@ async def append_entry(
         "prev_hash": prev_hash,
         "entry_hash": entry_hash,
         "ts": ts,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Verifier — read-side chain integrity check
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Epoch close (v0.13 — Merkle + hybrid signing)
+# ---------------------------------------------------------------------------
+
+# Default threshold: an epoch closes when its unclosed-entry count reaches
+# this value. Operators can override via WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE.
+# Small enough to keep proof paths short; large enough that closing does
+# not dominate write-path latency. 1024 → 10-level Merkle tree.
+_DEFAULT_EPOCH_ENTRY_COUNT = 1024
+
+
+def epoch_entry_count_threshold() -> int:
+    """
+    Resolve the threshold: env var override if set (non-empty positive int),
+    otherwise the default. Cached at read time — callers who mutate the
+    env var mid-process must re-read.
+    """
+    raw = os.environ.get("WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value > 0:
+                return value
+        except ValueError:
+            pass  # fall through to default
+    return _DEFAULT_EPOCH_ENTRY_COUNT
+
+
+CREATE_EPOCHS_TABLE = """
+CREATE TABLE IF NOT EXISTS tamper_evident_epochs (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    merkle_root TEXT NOT NULL,
+    prev_epoch_root TEXT NOT NULL,
+    first_entry_seq INTEGER NOT NULL,
+    last_entry_seq INTEGER NOT NULL,
+    entry_count INTEGER NOT NULL,
+    signature_envelope TEXT NOT NULL,
+    closed_at TEXT NOT NULL
+)
+"""
+
+# Append-only enforcement for epochs, same pattern as the entries table.
+CREATE_EPOCH_APPEND_ONLY_TRIGGERS = [
+    """
+    CREATE TRIGGER IF NOT EXISTS tamper_evident_epochs_no_update
+    BEFORE UPDATE ON tamper_evident_epochs
+    BEGIN
+        SELECT RAISE(ABORT, 'tamper_evident_epochs is append-only: UPDATE forbidden');
+    END
+    """,
+    """
+    CREATE TRIGGER IF NOT EXISTS tamper_evident_epochs_no_delete
+    BEFORE DELETE ON tamper_evident_epochs
+    BEGIN
+        SELECT RAISE(ABORT, 'tamper_evident_epochs is append-only: DELETE forbidden');
+    END
+    """,
+]
+
+# Genesis prev_epoch_root anchors the first epoch. Distinct from the
+# entry-chain GENESIS_HASH so the two chains cannot cross-verify by
+# accident.
+_EPOCH_GENESIS_SEED = b"world-model-mcp tamper-evident epochs v1"
+EPOCH_GENESIS_ROOT: str = (
+    "sha256:" + hashlib.sha256(_EPOCH_GENESIS_SEED).hexdigest()
+)
+
+
+async def _create_epoch_schema(db: Any) -> None:
+    """Idempotent DDL for the epoch table + triggers."""
+    await db.execute(CREATE_EPOCHS_TABLE)
+    for trigger in CREATE_EPOCH_APPEND_ONLY_TRIGGERS:
+        await db.execute(trigger)
+
+
+async def _last_closed_epoch(db: Any) -> Optional[dict]:
+    """
+    Return the most recent closed epoch as a dict, or None if no epoch has
+    ever closed.
+    """
+    cursor = await db.execute(
+        "SELECT seq, merkle_root, prev_epoch_root, first_entry_seq, "
+        "last_entry_seq, entry_count, signature_envelope, closed_at "
+        "FROM tamper_evident_epochs ORDER BY seq DESC LIMIT 1"
+    )
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    return dict(
+        seq=row[0],
+        merkle_root=row[1],
+        prev_epoch_root=row[2],
+        first_entry_seq=row[3],
+        last_entry_seq=row[4],
+        entry_count=row[5],
+        signature_envelope=row[6],
+        closed_at=row[7],
+    )
+
+
+async def _unclosed_entry_count(db: Any) -> int:
+    """
+    Count entries whose seq is greater than the last epoch's
+    last_entry_seq. On a fresh log, this is simply the total entry count.
+    """
+    last = await _last_closed_epoch(db)
+    watermark = last["last_entry_seq"] if last else 0
+    cursor = await db.execute(
+        "SELECT COUNT(*) FROM tamper_evident_log WHERE seq > ?",
+        (watermark,),
+    )
+    row = await cursor.fetchone()
+    return int(row[0]) if row else 0
+
+
+async def should_close_epoch(db: Any, threshold: Optional[int] = None) -> bool:
+    """
+    True when the unclosed-entry count has reached the threshold. Callers
+    check this after each append and close if so. Time-based epoch close
+    is a v0.14 addition; v0.13 is size-based only.
+    """
+    t = threshold if threshold is not None else epoch_entry_count_threshold()
+    return await _unclosed_entry_count(db) >= t
+
+
+async def _fetch_unclosed_entry_row_hashes(db: Any) -> tuple[list[bytes], int, int]:
+    """
+    Return (leaf hashes ready for Merkle input, first_entry_seq,
+    last_entry_seq) for all entries strictly above the last closed epoch's
+    watermark. The row_hash stored in the log is `sha256:HEX`; strip the
+    prefix and hex-decode to feed into the Merkle module's leaf_hash().
+    """
+    last = await _last_closed_epoch(db)
+    watermark = last["last_entry_seq"] if last else 0
+    cursor = await db.execute(
+        "SELECT seq, row_hash FROM tamper_evident_log "
+        "WHERE seq > ? ORDER BY seq ASC",
+        (watermark,),
+    )
+    rows = await cursor.fetchall()
+    if not rows:
+        return [], 0, 0
+    leaves = [bytes.fromhex(row[1].split(":", 1)[1]) for row in rows]
+    return leaves, rows[0][0], rows[-1][0]
+
+
+async def close_epoch(db: Any, signer: Any) -> dict:
+    """
+    Close the current epoch: Merkle-tree the unclosed entries, chain the
+    root to the previous epoch's root, sign the resulting message with the
+    hybrid signer, persist the epoch row.
+
+    `signer` must be a HybridSigner from `hybrid_signer`. Kept as Any at
+    the type level to avoid a circular import at module load — the crypto
+    is only pulled in when opt-in is on.
+
+    Returns the persisted epoch as a dict. Raises ValueError if there is
+    nothing to close.
+
+    The signed message is a canonical JSON binding:
+      {"merkle_root": "...", "prev_epoch_root": "...",
+       "first_entry_seq": N, "last_entry_seq": M, "entry_count": K,
+       "closed_at": "..."}
+    All fields are covered so tampering with any one invalidates the
+    signature.
+    """
+    from . import merkle  # local import to keep this module import-cheap
+
+    leaves, first_seq, last_seq = await _fetch_unclosed_entry_row_hashes(db)
+    if not leaves:
+        raise ValueError("no entries to close in this epoch")
+
+    # RFC 6962 leaf hash of each stored row_hash. The row_hash was already
+    # sha256 of canonical row JSON; wrapping through leaf_hash() adds the
+    # 0x00 domain separator so external verifiers get a spec-conformant
+    # RFC 6962 tree.
+    hashed_leaves = [merkle.leaf_hash(leaf) for leaf in leaves]
+    root_bytes = merkle.merkle_root(hashed_leaves)
+    merkle_root_hex = "sha256:" + root_bytes.hex()
+
+    last_epoch = await _last_closed_epoch(db)
+    prev_epoch_root = (
+        last_epoch["merkle_root"] if last_epoch else EPOCH_GENESIS_ROOT
+    )
+
+    entry_count = len(leaves)
+    closed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    # Canonical JSON of the signed payload. Covers every field so field
+    # tampering breaks the signature.
+    payload = {
+        "merkle_root": merkle_root_hex,
+        "prev_epoch_root": prev_epoch_root,
+        "first_entry_seq": first_seq,
+        "last_entry_seq": last_seq,
+        "entry_count": entry_count,
+        "closed_at": closed_at,
+    }
+    signed_bytes = canonical_json(payload)
+    envelope = signer.sign(signed_bytes)
+    envelope_json = json.dumps(envelope, sort_keys=True, separators=(",", ":"))
+
+    await db.execute(
+        """
+        INSERT INTO tamper_evident_epochs
+        (merkle_root, prev_epoch_root, first_entry_seq, last_entry_seq,
+         entry_count, signature_envelope, closed_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (merkle_root_hex, prev_epoch_root, first_seq, last_seq,
+         entry_count, envelope_json, closed_at),
+    )
+
+    # Fetch the new seq to return.
+    cursor = await db.execute("SELECT last_insert_rowid()")
+    row = await cursor.fetchone()
+    epoch_seq = int(row[0]) if row else 0
+
+    return {
+        "seq": epoch_seq,
+        "merkle_root": merkle_root_hex,
+        "prev_epoch_root": prev_epoch_root,
+        "first_entry_seq": first_seq,
+        "last_entry_seq": last_seq,
+        "entry_count": entry_count,
+        "signature_envelope": envelope_json,
+        "closed_at": closed_at,
     }
 
 
