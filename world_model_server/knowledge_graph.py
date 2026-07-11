@@ -126,7 +126,36 @@ class KnowledgeGraph:
         await self._create_outcomes_schema()
         await self._create_trajectories_schema()
         await self._create_audit_schema()
+        # v0.13 opt-in tamper-evident log. Off by default so existing users
+        # do not gain a new table on upgrade without asking. Enable with
+        # WORLD_MODEL_AUDIT_LOG=on. See docs/AUDIT_LOG.md.
+        if self.tamper_evident_enabled:
+            await self._create_tamper_evident_schema()
         await self._run_migrations()
+
+    @property
+    def tamper_evident_enabled(self) -> bool:
+        """True when v0.13 tamper-evident append-only log is opted in."""
+        return os.environ.get("WORLD_MODEL_AUDIT_LOG", "").lower() in {
+            "on",
+            "1",
+            "true",
+            "yes",
+        }
+
+    async def _create_tamper_evident_schema(self) -> None:
+        """Create the v0.13 tamper-evident append-only log schema.
+
+        Table lives in `audit.db` alongside the v0.7.0 `compaction_audit`
+        table. Append-only enforced via SQLite BEFORE UPDATE / BEFORE DELETE
+        triggers that RAISE(ABORT, ...). The primary tamper defense is still
+        the hash chain — this trigger is belt-and-braces at the storage
+        layer.
+        """
+        from . import tamper_evident
+
+        async with aiosqlite.connect(self.audit_db) as db:
+            await tamper_evident.create_schema(db)
 
     async def _existing_columns(self, db, table: str) -> set:
         """Return set of column names for a table via PRAGMA table_info."""
