@@ -157,6 +157,35 @@ class KnowledgeGraph:
         async with aiosqlite.connect(self.audit_db) as db:
             await tamper_evident.create_schema(db)
 
+    async def _maybe_audit_write(
+        self, kind: str, row_id: str, payload: dict
+    ) -> None:
+        """
+        Append a tamper-evident log entry for a durable write.
+
+        No-op when opt-in is off (the common case for existing users). When
+        opt-in is on, opens a connection to `audit_db`, appends via the
+        chain-hashed primitive in `tamper_evident.append_entry`, and commits.
+
+        Called AFTER the primary write commits. If this raises, the primary
+        write has already persisted — the caller sees the exception and can
+        surface it. A verifier walking the log later will detect a gap (the
+        persisted row has no corresponding audit entry), which is the
+        compliance-correct outcome: "a write happened that we cannot prove."
+
+        Payload should be a stable subset of the persisted row — identity
+        + purpose-shaped fields, excluding volatile server-side timestamps
+        and free-text fields that may contain PII.
+        """
+        if not self.tamper_evident_enabled:
+            return
+
+        from . import tamper_evident
+
+        async with aiosqlite.connect(self.audit_db) as db:
+            await tamper_evident.append_entry(db, kind, row_id, payload)
+            await db.commit()
+
     async def _existing_columns(self, db, table: str) -> set:
         """Return set of column names for a table via PRAGMA table_info."""
         cursor = await db.execute(f"PRAGMA table_info({table})")
@@ -726,6 +755,20 @@ class KnowledgeGraph:
             )
             await db.commit()
         self._cache_invalidate("facts:")
+        await self._maybe_audit_write(
+            "fact_create",
+            fact.id,
+            {
+                "id": fact.id,
+                "fact_text": fact.fact_text,
+                "evidence_type": fact.evidence_type,
+                "evidence_path": fact.evidence_path,
+                "confidence": fact.confidence,
+                "status": fact.status,
+                "session_id": fact.session_id,
+                "content_type": fact.content_type,
+            },
+        )
         return fact.id
 
     async def query_facts(
@@ -901,6 +944,16 @@ class KnowledgeGraph:
                     ),
                 )
                 await db.commit()
+                await self._maybe_audit_write(
+                    "constraint_update",
+                    existing_id,
+                    {
+                        "id": existing_id,
+                        "rule_name": constraint.rule_name,
+                        "violation_count": new_count,
+                        "description": constraint.description,
+                    },
+                )
                 return existing_id
             else:
                 # Create new constraint
@@ -929,6 +982,17 @@ class KnowledgeGraph:
                     ),
                 )
                 await db.commit()
+                await self._maybe_audit_write(
+                    "constraint_create",
+                    constraint.id,
+                    {
+                        "id": constraint.id,
+                        "rule_name": constraint.rule_name,
+                        "constraint_type": constraint.constraint_type,
+                        "description": constraint.description,
+                        "severity": constraint.severity,
+                    },
+                )
                 return constraint.id
 
     @staticmethod
@@ -1060,6 +1124,18 @@ class KnowledgeGraph:
                 ),
             )
             await db.commit()
+        await self._maybe_audit_write(
+            "event_create",
+            event.id,
+            {
+                "id": event.id,
+                "event_type": event.event_type,
+                "session_id": event.session_id,
+                "entity_id": event.entity_id,
+                "tool_name": event.tool_name,
+                "success": event.success,
+            },
+        )
         return event.id
 
     async def get_session_events(self, session_id: str) -> List[Event]:
@@ -1192,6 +1268,17 @@ class KnowledgeGraph:
                 ),
             )
             await db.commit()
+        await self._maybe_audit_write(
+            "decision_create",
+            decision.id,
+            {
+                "id": decision.id,
+                "session_id": decision.session_id,
+                "tool_name": decision.tool_name,
+                "decision_type": decision.decision_type,
+                "file_path": decision.file_path,
+            },
+        )
         return decision.id
 
     async def get_decisions(
