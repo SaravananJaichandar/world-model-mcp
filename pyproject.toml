@@ -25,10 +25,16 @@ dependencies = [
     "aiosqlite>=0.19.0",
     "rich>=13.0.0",
     # v0.13 tamper-evident audit log signing.
-    # Ed25519 (via cryptography, transitive through mcp/anthropic already)
-    # + SLH-DSA-SHA2-128f (via pyspx, pure Python SPHINCS+ implementation).
+    # Ed25519 (via cryptography) + SLH-DSA-SHA2-128f-simple (via
+    # liboqs-python, which reads the same PQClean C reference implementation
+    # that the pqclean npm TypeScript verifier reads — so signatures
+    # cross-verify byte-for-byte across languages).
+    #
+    # Requires liboqs installed as a system dependency:
+    #   macOS:        brew install liboqs
+    #   Debian/Ubuntu: apt install liboqs-dev
     "cryptography>=42.0.0",
-    "pyspx>=0.5.0",
+    "liboqs-python>=0.15.0",
 ]
 
 [project.optional-dependencies]

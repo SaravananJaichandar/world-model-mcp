@@ -33,6 +33,20 @@ export WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE=1024
 
 Then start the world-model-mcp server as normal. On the first opt-in start, the server creates two new SQLite tables in the existing `audit.db` file — `tamper_evident_log` and `tamper_evident_epochs` — and generates a new hybrid keypair on the first epoch close. That is it. No dashboard, no signup, no external service.
 
+**System dependency:** the SLH-DSA half of the hybrid signature uses liboqs, which needs to be installed as a shared library before `pip install world-model-mcp` will build the Python bindings.
+
+```bash
+# macOS
+brew install liboqs
+
+# Debian / Ubuntu
+apt install liboqs-dev
+
+# From source: see https://github.com/open-quantum-safe/liboqs
+```
+
+If you leave the audit log off (`WORLD_MODEL_AUDIT_LOG` unset), liboqs is not touched — the crypto module is imported lazily inside the opt-in code path.
+
 Signing keys are written to `<WORLD_MODEL_DB_PATH>/keys/` with mode 0600 on the private key files and mode 0700 on the directory. If you use the default `WORLD_MODEL_DB_PATH=./.claude/world-model/`, keys land inside a directory that is already covered by the project's `.gitignore` — you will not accidentally commit them.
 
 ## What gets logged
@@ -177,7 +191,7 @@ Storage is not the constraint. If it ever becomes one, epoch pruning (retain the
 
 **Signature primitives: Ed25519 + SLH-DSA-SHA2-128f hybrid** — both required for verification. Reasons:
 - Ed25519: FIPS 186-5 (2023). Fast, small (64-byte signatures), decades of classical scrutiny. Via `cryptography.hazmat`.
-- SLH-DSA-SHA2-128f: FIPS 205 (2024). Post-quantum, hash-based security assumptions, 17 KB signatures. Via `pyspx` (pure Python SPHINCS+, no C dependencies — compliance teams do not have to vet a C runtime).
+- SLH-DSA-SHA2-128f-simple: FIPS 205 (2024). Post-quantum, hash-based security assumptions, 17 KB signatures. Via `liboqs-python` (bindings to the canonical liboqs C library, which Cloudflare, AWS, and OpenSSL's PQC support all depend on — compliance teams have already vetted it). Requires liboqs installed as a system dependency: `brew install liboqs` on macOS, `apt install liboqs-dev` on Debian/Ubuntu. The TypeScript reference verifier reads the same PQClean C reference implementation via `pqclean` npm, so signatures cross-verify byte-for-byte across languages.
 - Hybrid means BOTH signatures must verify. A future quantum attack that breaks Ed25519 still leaves SLH-DSA standing; a hash-function break that compromises SLH-DSA still leaves Ed25519 standing.
 
 **Merkle tree: RFC 6962** — leaf hash is `SHA-256(0x00 || data)`, internal node is `SHA-256(0x01 || left || right)`. Same construction Certificate Transparency uses. Auditors already know it; external verifiers can port existing tooling.

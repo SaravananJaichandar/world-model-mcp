@@ -117,18 +117,6 @@ class TestSlhDsaSigner:
         assert hs.verify_slh_dsa(signer.public_key_bytes(), b"payload", sig, domain=d1)
         assert not hs.verify_slh_dsa(signer.public_key_bytes(), b"payload", sig, domain=d2)
 
-    def test_deterministic_from_seed(self):
-        seed = os.urandom(hs.SLH_DSA_SEED_BYTES)
-        s1 = hs.SlhDsaSigner.from_seed(seed)
-        s2 = hs.SlhDsaSigner.from_seed(seed)
-        # Same seed → same keys.
-        assert s1.public_key_bytes() == s2.public_key_bytes()
-        assert s1.secret_key_bytes() == s2.secret_key_bytes()
-
-    def test_seed_wrong_length_raises(self):
-        with pytest.raises(ValueError):
-            hs.SlhDsaSigner.from_seed(b"short")
-
     def test_construction_validates_key_sizes(self):
         with pytest.raises(ValueError):
             hs.SlhDsaSigner(public_key=b"short", secret_key=b"x" * hs.SLH_DSA_SECRET_KEY_BYTES)

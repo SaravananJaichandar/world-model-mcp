@@ -11,11 +11,13 @@ even if a future quantum attack breaks Ed25519, the SLH-DSA half stands.
 - **Ed25519**: FIPS 186-5 (2023) approved. Fast, small (64-byte
   signatures), decades of classical scrutiny. cryptography.hazmat
   implementation used verbatim.
-- **SLH-DSA-SHA2-128f**: FIPS 205 (2024) approved. Hash-based post-quantum
-  signatures with conservative security assumptions (only breaks if
-  SHA-256 breaks). Fast variant: ~17 KB signatures, 128-bit classical
-  security. Same parameter set the Suzhi PQ stack uses
-  (`slh_dsa_sha2_128f` in @noble/post-quantum).
+- **SLH-DSA-SHA2-128f-simple**: FIPS 205 (2024) approved, round-3-finalized
+  variant. Hash-based post-quantum signatures with conservative security
+  assumptions (only breaks if SHA-256 breaks). Fast variant: ~17 KB
+  signatures, 128-bit classical security. Via liboqs-python — the same
+  PQClean C reference implementation that the `pqclean` npm package
+  reads, so the TypeScript verifier cross-verifies these signatures
+  byte-for-byte.
 
 Both are FIPS-approved. Compliance-track buyers get both boxes checked.
 
@@ -57,9 +59,18 @@ import json
 import os
 from typing import Optional
 
-import pyspx.sha2_128f as slh_dsa_sha2_128f
+import oqs
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
+
+# liboqs algorithm name for SPHINCS+-SHA2-128f-simple (the round-3-finalized
+# variant that PQClean ships and pqclean npm reads). pyspx hardcodes the
+# deprecated `robust` variant, which is why we swapped away from it before
+# ship — the `simple` variant is what all modern implementations use.
+_SLH_DSA_ALG = "SPHINCS+-SHA2-128f-simple"
+
+# Cached algorithm parameter sizes (queried once from liboqs at import).
+_slh_probe = oqs.Signature(_SLH_DSA_ALG)
 
 
 # ---------------------------------------------------------------------------
@@ -73,12 +84,11 @@ SIGNATURE_ENVELOPE_VERSION = 1
 # breaking change to the audit-log message layout ever ships.
 DOMAIN_AUDIT_LOG_EPOCH_ROOT = b"world-model-mcp/audit-log/epoch-root/v1"
 
-# SLH-DSA-SHA2-128f parameter sizes (from pyspx). Documented here so
+# SLH-DSA-SHA2-128f-simple parameter sizes (from liboqs). Documented here so
 # verifiers can validate lengths before decoding.
-SLH_DSA_PUBLIC_KEY_BYTES = slh_dsa_sha2_128f.crypto_sign_PUBLICKEYBYTES  # 32
-SLH_DSA_SECRET_KEY_BYTES = slh_dsa_sha2_128f.crypto_sign_SECRETKEYBYTES  # 64
-SLH_DSA_SIGNATURE_BYTES = slh_dsa_sha2_128f.crypto_sign_BYTES            # 17088
-SLH_DSA_SEED_BYTES = slh_dsa_sha2_128f.crypto_sign_SEEDBYTES             # 48
+SLH_DSA_PUBLIC_KEY_BYTES = _slh_probe.details["length_public_key"]     # 32
+SLH_DSA_SECRET_KEY_BYTES = _slh_probe.details["length_secret_key"]    # 64
+SLH_DSA_SIGNATURE_BYTES = _slh_probe.details["length_signature"]      # 17088
 
 
 # ---------------------------------------------------------------------------
@@ -182,16 +192,25 @@ def verify_ed25519(
 
 class SlhDsaSigner:
     """
-    Domain-separated SLH-DSA-SHA2-128f signer.
+    Domain-separated SLH-DSA-SHA2-128f-simple signer.
 
-    Uses pyspx (pure Python SPHINCS+ implementation, no external C
-    dependencies). SPHINCS+ is the pre-standardization name; FIPS 205
-    formalized this construction as SLH-DSA. Same algorithm.
+    Uses liboqs-python (bindings to the canonical liboqs C library), which
+    implements the round-3-finalized `simple` variant that PQClean ships.
+    That's the same source pqclean npm reads, so the TypeScript verifier
+    cross-verifies these signatures byte-for-byte.
 
     Signature size: 17 KB. Not observable in end-to-end latency for
-    epoch-close operations (default 24-hour epochs), but visible in the
-    signature envelope — verifiers must be prepared for larger payloads
-    than Ed25519's 64 bytes.
+    epoch-close operations, but visible in the signature envelope —
+    verifiers must be prepared for larger payloads than Ed25519's 64 bytes.
+
+    Requires liboqs installed as a system library. On macOS:
+      brew install liboqs
+    On Debian/Ubuntu:
+      apt install liboqs-dev
+
+    liboqs is the canonical PQC reference library, used by Cloudflare,
+    AWS, and OpenSSL's PQC support. Compliance-track security teams already
+    know it.
     """
 
     def __init__(
@@ -216,27 +235,19 @@ class SlhDsaSigner:
 
     @classmethod
     def generate(cls, domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT) -> "SlhDsaSigner":
-        seed = os.urandom(SLH_DSA_SEED_BYTES)
-        pk, sk = slh_dsa_sha2_128f.generate_keypair(seed)
-        return cls(public_key=pk, secret_key=sk, domain=domain)
-
-    @classmethod
-    def from_seed(cls, seed: bytes, domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT) -> "SlhDsaSigner":
-        """
-        Deterministic construction from a seed. Useful for tests and for
-        operators who want reproducible key material during rotation.
-        """
-        if len(seed) != SLH_DSA_SEED_BYTES:
-            raise ValueError(
-                f"SLH-DSA seed must be {SLH_DSA_SEED_BYTES} bytes, got {len(seed)}"
-            )
-        pk, sk = slh_dsa_sha2_128f.generate_keypair(seed)
-        return cls(public_key=pk, secret_key=sk, domain=domain)
+        # liboqs generates the keypair; we extract public + secret bytes
+        # and store them for reuse via the `sign` method below.
+        signer = oqs.Signature(_SLH_DSA_ALG)
+        public_key = signer.generate_keypair()
+        secret_key = signer.export_secret_key()
+        return cls(public_key=public_key, secret_key=secret_key, domain=domain)
 
     def sign(self, message: bytes) -> bytes:
-        return slh_dsa_sha2_128f.sign(
-            domain_separate(self._domain, message), self._secret_key
-        )
+        # Import the secret key into a fresh oqs.Signature instance and
+        # sign. liboqs binds the secret key to the signer object at import
+        # time; each sign() call is a stateless operation over the bound key.
+        signer = oqs.Signature(_SLH_DSA_ALG, self._secret_key)
+        return signer.sign(domain_separate(self._domain, message))
 
     def public_key_bytes(self) -> bytes:
         return self._public_key
@@ -252,17 +263,19 @@ def verify_slh_dsa(
     domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT,
 ) -> bool:
     """
-    Verify an SLH-DSA-SHA2-128f signature over the domain-separated message.
+    Verify an SLH-DSA-SHA2-128f-simple signature over the domain-separated
+    message.
 
     Returns False on any error rather than raising. Rejects signatures of
-    wrong length up front to avoid pyspx-internal errors on malformed input.
+    wrong length up front to avoid liboqs-internal errors on malformed input.
     """
     if len(signature) != SLH_DSA_SIGNATURE_BYTES:
         return False
     if len(public_key_bytes) != SLH_DSA_PUBLIC_KEY_BYTES:
         return False
     try:
-        return slh_dsa_sha2_128f.verify(
+        verifier = oqs.Signature(_SLH_DSA_ALG)
+        return verifier.verify(
             domain_separate(domain, message), signature, public_key_bytes
         )
     except Exception:
