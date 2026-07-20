@@ -211,6 +211,71 @@ class TestForgetMe:
 # --------------------------------------------------------------------------
 
 
+class TestSecurityAuditFixes:
+    """
+    Client-side regression tests for the 2026-07-20 security audit.
+    """
+
+    def test_forget_wipes_local_when_server_returns_null(self, home, monkeypatch):
+        """[MEDIUM] forget_me used to raise AttributeError on
+        body.get('deleted', 0) if body was null. Local wipe would be
+        skipped. Fix: broad except + finally block guarantees wipe."""
+        from world_model_server import telemetry as t
+        t.set_consent(True)
+        _ = t.get_install_id()
+
+        class _NullResp:
+            status = 200
+            def read(self):
+                return b"null"
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        monkeypatch.setattr("urllib.request.urlopen",
+                            lambda *a, **kw: _NullResp())
+        # Must not raise; local wipe must happen
+        server_ok, deleted = t.forget_me()
+        assert not t._INSTALL_ID_PATH.exists()
+        assert not t._CONSENT_PATH.exists()
+
+    def test_forget_wipes_local_when_env_url_is_malformed(self, home, monkeypatch):
+        """[MEDIUM] Malformed WORLD_MODEL_TELEMETRY_ENDPOINT raised
+        ValueError before the wipe loop ran. Fix: broad except."""
+        import importlib
+        monkeypatch.setenv("WORLD_MODEL_TELEMETRY_ENDPOINT",
+                           "://not-a-url")
+        from world_model_server import telemetry as t
+        importlib.reload(t)
+        t.set_consent(True)
+        _ = t.get_install_id()
+        server_ok, deleted = t.forget_me()
+        assert server_ok is False
+        assert not t._INSTALL_ID_PATH.exists()
+        assert not t._CONSENT_PATH.exists()
+
+    def test_state_files_have_owner_only_perms(self, home):
+        """[LOW] Client state files were world-readable at umask 0644.
+        Fix: _write_state_secure sets 0600 on the file and 0700 on
+        _STATE_DIR. Skip on Windows where POSIX perms don't apply."""
+        import os
+        import sys
+        if sys.platform.startswith("win"):
+            pytest.skip("POSIX permissions don't apply on Windows")
+        from world_model_server import telemetry as t
+        t.set_consent(True)
+        _ = t.get_install_id()
+        # Both files should be 0600
+        install_mode = t._INSTALL_ID_PATH.stat().st_mode & 0o777
+        consent_mode = t._CONSENT_PATH.stat().st_mode & 0o777
+        assert install_mode == 0o600, oct(install_mode)
+        assert consent_mode == 0o600, oct(consent_mode)
+        # Directory should be 0700
+        dir_mode = t._STATE_DIR.stat().st_mode & 0o777
+        assert dir_mode == 0o700, oct(dir_mode)
+
+
 class TestEndpointResolution:
     def test_default_endpoint_is_etch_systems(self, home, monkeypatch):
         monkeypatch.delenv("WORLD_MODEL_TELEMETRY_ENDPOINT", raising=False)

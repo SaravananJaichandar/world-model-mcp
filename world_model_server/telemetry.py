@@ -113,9 +113,8 @@ def get_install_id() -> str:
             existing = _INSTALL_ID_PATH.read_text().strip()
             if existing:
                 return existing
-        _STATE_DIR.mkdir(parents=True, exist_ok=True)
         new_id = str(uuid.uuid4())
-        _INSTALL_ID_PATH.write_text(new_id)
+        _write_state_secure(_INSTALL_ID_PATH, new_id)
         return new_id
     except OSError:
         # If we can't read/write state, return an ephemeral id. Session
@@ -142,8 +141,7 @@ def is_enabled() -> bool:
 
 def set_consent(enabled: bool) -> None:
     """Persist consent decision. Idempotent."""
-    _STATE_DIR.mkdir(parents=True, exist_ok=True)
-    _CONSENT_PATH.write_text("enabled" if enabled else "disabled")
+    _write_state_secure(_CONSENT_PATH, "enabled" if enabled else "disabled")
 
 
 def consent_status() -> str:
@@ -391,8 +389,7 @@ def maybe_heartbeat() -> None:
         # Record BEFORE writing the timestamp so a failed record leaves
         # the timestamp stale and gets retried on next invocation.
         record("heartbeat")
-        _STATE_DIR.mkdir(parents=True, exist_ok=True)
-        _LAST_HEARTBEAT_PATH.write_text(str(time.time()))
+        _write_state_secure(_LAST_HEARTBEAT_PATH, str(time.time()))
     except OSError:
         pass
 
@@ -402,14 +399,15 @@ def forget_me() -> tuple[bool, int]:
     Right-to-erasure. Delete every server-side row for this install_id,
     then wipe local telemetry state (install_id, consent, last_heartbeat).
 
-    Returns (server_ok, deleted_count). Failing to reach the server does
-    not stop local wipe — the user's consent is revoked either way.
+    Returns (server_ok, deleted_count). Failing to reach the server —
+    OR the server returning any unexpected response shape — does not
+    stop local wipe. Consent revocation is guaranteed offline.
     """
     install_id = get_install_id()
-    endpoint = _resolve_forget_endpoint(install_id)
     deleted = 0
     server_ok = False
     try:
+        endpoint = _resolve_forget_endpoint(install_id)
         req = urllib.request.Request(
             endpoint,
             method="DELETE",
@@ -423,20 +421,44 @@ def forget_me() -> tuple[bool, int]:
             if server_ok:
                 try:
                     body = json.loads(resp.read().decode("utf-8"))
-                    deleted = int(body.get("deleted", 0))
-                except (ValueError, json.JSONDecodeError, KeyError):
+                    if isinstance(body, dict):
+                        deleted = int(body.get("deleted", 0) or 0)
+                except (ValueError, json.JSONDecodeError,
+                        TypeError, AttributeError):
                     pass
-    except (urllib.error.URLError, urllib.error.HTTPError,
-            TimeoutError, OSError):
+    except Exception:
+        # Audit fix 2026-07-20: broad except so ANY error path (bad URL
+        # in env override, response with wrong shape, TLS error, …)
+        # cannot skip the local-wipe block below. Consent revocation
+        # must survive every server-side surprise.
         pass
-
-    # Wipe local state regardless of server outcome. Consent revocation
-    # must be honored client-side even when offline.
-    for path in (_INSTALL_ID_PATH, _CONSENT_PATH, _LAST_HEARTBEAT_PATH):
-        try:
-            if path.exists():
-                path.unlink()
-        except OSError:
-            pass
+    finally:
+        # Wipe local state regardless of server outcome. This is the
+        # critical piece: `--forget-me` MUST leave the local machine
+        # in an opted-out state with no install_id.
+        for path in (_INSTALL_ID_PATH, _CONSENT_PATH, _LAST_HEARTBEAT_PATH):
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError:
+                pass
 
     return server_ok, deleted
+
+
+def _write_state_secure(path: Path, content: str) -> None:
+    """
+    Write a state file at umask-agnostic 0o600 so a co-tenant on the
+    same machine can't read the install_id or consent flag and use
+    them to spoof erasure requests. Audit fix 2026-07-20.
+    """
+    _STATE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(_STATE_DIR, 0o700)
+    except OSError:
+        pass
+    path.write_text(content)
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
