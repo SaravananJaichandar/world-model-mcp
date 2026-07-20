@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.13.0"
+version = "0.14.0"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -91,9 +91,9 @@ packages = ["world_model_server"]
 "world_model_server/hooks/world-model-session.js" = "world_model_server/hooks/world-model-session.js"
 "world_model_server/hooks/world-model-validate.js" = "world_model_server/hooks/world-model-validate.js"
 "scripts/demo_seed.py" = "scripts/demo_seed.py"
-# Generated at wheel-build time by scripts/embed_token.py. The file is
-# gitignored; force-include is a no-op when it doesn't exist locally.
-"world_model_server/_embedded_token.py" = "world_model_server/_embedded_token.py"
+# (v0.14: dropped the _embedded_token.py force-include. The old GitHub
+# Issues telemetry sink was replaced by an unauthenticated etch.systems
+# endpoint that rate-limits by install_id server-side. No PAT needed.)
 
 [tool.black]
 line-length = 100

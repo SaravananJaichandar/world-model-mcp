@@ -169,28 +169,58 @@ def _maybe_prompt_for_telemetry(args) -> None:
 
 
 def telemetry_command(args):
-    """Show / enable / disable opt-in telemetry."""
+    """Show / enable / disable / forget-me opt-in telemetry."""
     from . import telemetry as _telemetry
 
     if args.enable:
         _telemetry.set_consent(True)
         console.print("[green]Telemetry enabled.[/green]")
+        console.print(
+            "  A daily heartbeat + specific action events will now flow "
+            "to https://etch.systems/api/telemetry/ingest. Payload contents "
+            "are inspectable with `world-model telemetry --status`. Opt "
+            "out with `--disable` or fully erase with `--forget-me`."
+        )
         return
     if args.disable:
         _telemetry.set_consent(False)
-        console.print("[yellow]Telemetry disabled.[/yellow]")
+        console.print("[yellow]Telemetry disabled.[/yellow] No further events will be sent.")
+        console.print(
+            "  Historical events for your install_id remain on the server "
+            "for the standard 90-day retention window. Run "
+            "`world-model telemetry --forget-me` to delete them now."
+        )
+        return
+    if getattr(args, "forget_me", False):
+        console.print("Requesting server-side deletion for this install_id...")
+        server_ok, deleted = _telemetry.forget_me()
+        if server_ok:
+            console.print(
+                f"[green]Server deleted {deleted} event(s).[/green] "
+                "Local state wiped."
+            )
+        else:
+            console.print(
+                "[yellow]Server unreachable or returned an error.[/yellow] "
+                "Local state wiped regardless — no further events will be "
+                "sent from this machine. Server-side rows will be removed by "
+                "the 90-day automatic purge."
+            )
         return
 
     # Default: --status
     status = _telemetry.consent_status()
     console.print(f"[bold]Telemetry status:[/bold] {status}")
-    console.print(f"Install ID:        {_telemetry.get_install_id()}")
-    console.print(f"Repo:              {_telemetry._resolve_repo()}")
+    console.print(f"Install ID:  {_telemetry.get_install_id()}")
+    console.print(f"Endpoint:    {_telemetry._resolve_endpoint()}")
     console.print()
-    console.print("Sample payload that would be sent for setup_completed:")
+    console.print("Sample HEARTBEAT payload that would be sent:")
     import json as _json
-    sample = _telemetry.preview_payload("setup_completed", {"version_at_setup": True})
+    sample = _telemetry.preview_payload("heartbeat")
     console.print(_json.dumps(sample, indent=2))
+    console.print()
+    console.print("Never sent: file paths, file contents, prompt content, "
+                  "tool arguments, hostnames, IPs, usernames, emails.")
 
 
 def demo_command(args):
@@ -1664,14 +1694,18 @@ def main():
     demo_parser.add_argument("--project-dir", type=str, default=".")
     demo_parser.set_defaults(func=demo_command)
 
-    # Telemetry command (v0.7.3)
+    # Telemetry command (v0.7.3, sink migrated to Etch in v0.14)
     tel_parser = subparsers.add_parser(
-        "telemetry", help="Show, enable, or disable opt-in anonymous telemetry",
+        "telemetry", help="Show, enable, disable, or purge opt-in anonymous telemetry",
     )
     tel_group = tel_parser.add_mutually_exclusive_group()
     tel_group.add_argument("--enable", action="store_true", help="Enable telemetry")
     tel_group.add_argument("--disable", action="store_true", help="Disable telemetry")
     tel_group.add_argument("--status", action="store_true", help="Show status + sample payload (default)")
+    tel_group.add_argument("--forget-me", action="store_true",
+                           help="Right-to-erasure: delete every server-side "
+                                "event for this install_id and wipe local "
+                                "telemetry state.")
     tel_parser.set_defaults(func=telemetry_command)
 
     # Seed command
@@ -2041,6 +2075,17 @@ def main():
     if not hasattr(args, "func"):
         parser.print_help()
         sys.exit(1)
+
+    # Opportunistic heartbeat — fires at most once per 24h per install,
+    # only if the user has explicitly opted in. Never blocks the caller;
+    # never raises. Skip on the `telemetry` subcommand itself so a
+    # `--forget-me` request isn't followed by a fresh heartbeat racing it.
+    if getattr(args, "func", None) is not telemetry_command:
+        try:
+            from . import telemetry as _telemetry
+            _telemetry.maybe_heartbeat()
+        except Exception:
+            pass
 
     args.func(args)
 

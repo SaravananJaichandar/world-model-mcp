@@ -64,16 +64,19 @@ def test_f1_telemetry_install_id_is_stable_across_calls(tmp_path, monkeypatch):
     assert len(id1) == 36 and id1.count("-") == 4
 
 
-def test_f1_telemetry_record_no_token_is_silent_noop(tmp_path, monkeypatch):
-    """If no token is configured and the user opted in, record() should still
-    not raise and should not attempt network I/O."""
+def test_f1_telemetry_record_is_fail_open_on_network_error(tmp_path, monkeypatch):
+    """record() must never raise even when the ingest endpoint fails.
+    Post-v0.14: no PAT/token gate — sink is an unauthenticated URL that
+    rate-limits by install_id server-side. This test pins the fail-open
+    contract by pointing at a non-routable endpoint."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("WORLD_MODEL_TELEMETRY_TOKEN", raising=False)
+    monkeypatch.setenv("WORLD_MODEL_TELEMETRY_ENDPOINT",
+                       "http://127.0.0.1:1/api/telemetry/ingest")
     import importlib
     from world_model_server import telemetry as t
     importlib.reload(t)
     t.set_consent(True)
-    # Should not raise
+    # Should not raise; daemon thread does the send and eats any error.
     t.record("setup_completed", {"version_at_setup": True})
 
 
@@ -334,113 +337,11 @@ def test_bc_v072_http_transport_still_works(tmp_path):
             proc.kill()
 
 
-def test_embedded_token_stub_is_empty():
-    """The committed _embedded_token.py must always have EMBEDDED_TOKEN = "".
-
-    The release process (scripts/embed_token.py) writes a real PAT into this
-    file locally before `python3 -m build` runs, but the file in git must
-    always be the empty stub. This test catches accidental commits of a
-    populated token.
-    """
-    from world_model_server import _embedded_token
-
-    assert _embedded_token.EMBEDDED_TOKEN == "", (
-        "Refusing to commit a populated _embedded_token.py. "
-        "Run scripts/embed_token.py only for local release builds; "
-        "reset the file to EMBEDDED_TOKEN = '' before committing."
-    )
-
-
-def test_embed_token_script_writes_empty_when_no_env(tmp_path, monkeypatch):
-    """With no .env.release and no env var, embed_token.py should write an
-    empty-string stub and exit 0."""
-    import subprocess
-
-    # Run in a copy of the repo to avoid touching the real stub
-    project = tmp_path / "repo"
-    project.mkdir()
-    (project / "world_model_server").mkdir()
-    (project / "scripts").mkdir()
-    # Copy the script in
-    src_script = REPO_ROOT / "scripts" / "embed_token.py"
-    target = project / "scripts" / "embed_token.py"
-    target.write_text(src_script.read_text())
-
-    env = {k: v for k, v in os.environ.items() if k != "WORLD_MODEL_TELEMETRY_TOKEN"}
-    result = subprocess.run(
-        [sys.executable, str(target)],
-        capture_output=True, text=True, timeout=10, env=env, cwd=str(project),
-    )
-    assert result.returncode == 0, result.stderr
-    out = project / "world_model_server" / "_embedded_token.py"
-    assert out.exists()
-    assert 'EMBEDDED_TOKEN = ""' in out.read_text() or "EMBEDDED_TOKEN = ''" in out.read_text()
-
-
-def test_embed_token_script_rejects_malformed_token(tmp_path):
-    """Token with wrong prefix should fail validation (non-zero exit)."""
-    import subprocess
-
-    project = tmp_path / "repo"
-    project.mkdir()
-    (project / "world_model_server").mkdir()
-    (project / "scripts").mkdir()
-    src_script = REPO_ROOT / "scripts" / "embed_token.py"
-    (project / "scripts" / "embed_token.py").write_text(src_script.read_text())
-    (project / ".env.release").write_text("WORLD_MODEL_TELEMETRY_TOKEN=not-a-real-pat-format\n")
-
-    result = subprocess.run(
-        [sys.executable, str(project / "scripts" / "embed_token.py")],
-        capture_output=True, text=True, timeout=10, cwd=str(project),
-    )
-    assert result.returncode == 1
-    assert "expected prefix" in result.stderr or "too short" in result.stderr
-
-
-def test_embed_token_script_accepts_well_formed_token(tmp_path):
-    """A token with the right prefix and adequate length should be embedded."""
-    import subprocess
-
-    project = tmp_path / "repo"
-    project.mkdir()
-    (project / "world_model_server").mkdir()
-    (project / "scripts").mkdir()
-    src_script = REPO_ROOT / "scripts" / "embed_token.py"
-    (project / "scripts" / "embed_token.py").write_text(src_script.read_text())
-    # Synthetic well-formed token: prefix matches, length OK, NOT a real PAT
-    fake_token = "ghp_" + ("x" * 36)
-    (project / ".env.release").write_text(f"WORLD_MODEL_TELEMETRY_TOKEN={fake_token}\n")
-
-    result = subprocess.run(
-        [sys.executable, str(project / "scripts" / "embed_token.py")],
-        capture_output=True, text=True, timeout=10, cwd=str(project),
-    )
-    assert result.returncode == 0, result.stderr
-    out = (project / "world_model_server" / "_embedded_token.py").read_text()
-    assert fake_token in out
-
-
-def test_telemetry_uses_embedded_token_when_present(tmp_path, monkeypatch):
-    """telemetry._resolve_token must fall back to _EMBEDDED_TOKEN when the
-    env var is unset. The constant is captured at import time, so we patch
-    it directly on the telemetry module."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("WORLD_MODEL_TELEMETRY_TOKEN", raising=False)
-
-    from world_model_server import telemetry
-    fake = "ghp_" + ("x" * 36)
-    monkeypatch.setattr(telemetry, "_EMBEDDED_TOKEN", fake, raising=False)
-    resolved = telemetry._resolve_token()
-    assert resolved == fake
-
-
-def test_telemetry_env_var_overrides_embedded_token(tmp_path, monkeypatch):
-    """WORLD_MODEL_TELEMETRY_TOKEN env var must win over the embedded token."""
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("WORLD_MODEL_TELEMETRY_TOKEN", "ghp_envvar_wins")
-    from world_model_server import telemetry
-    monkeypatch.setattr(telemetry, "_EMBEDDED_TOKEN", "ghp_embedded_loses", raising=False)
-    assert telemetry._resolve_token() == "ghp_envvar_wins"
+# (v0.14: removed six tests for the now-deleted _embedded_token PAT
+# machinery. The old GitHub Issues sink is gone; new sink is an
+# unauthenticated etch.systems endpoint that rate-limits by install_id
+# server-side. See test_telemetry_v014_sink_migration.py for the
+# replacement coverage.)
 
 
 def test_bc_setup_without_no_prompt_in_ci_does_not_hang(tmp_path):
