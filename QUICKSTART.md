@@ -1,5 +1,11 @@
 # World Model MCP - Quick Start Guide
 
+## Hosted companion: Etch
+
+Running world-model-mcp locally? A hosted version at **[etch.systems](https://etch.systems)** manages KMS-backed keys, adds PII scan and secret detection, and produces signed PDF audit reports for compliance reviewers. Same OSS core, zero code changes to your local setup. Skip this section if you are running world-model-mcp standalone.
+
+---
+
 ## Installation (5 minutes)
 
 ### Prerequisites
