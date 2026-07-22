@@ -2,17 +2,15 @@
 
 - **Status:** Proposed
 - **Date:** 2026-07-22
-- **Decision drivers:** first public feature request from Product Hunt launch (user Gülten); primitive-layer positioning under [[north-star-2026-07-22]]; v0.15.0 build queue P0 per [[30day-build-queue-2026-07-22]]
+- **Decision drivers:** primitive-layer positioning; v0.15.0 build queue
 
 ## Context
 
-On Product Hunt launch day (2026-07-22), user Gülten posted:
+The tamper-evident audit log shipped in v0.13 records agent actions (facts, constraints, events, decisions) but does not represent human interventions as first-class citizens of the signed chain. In compliance-adjacent workflows, a reviewer or operator often overrides an agent's tool call mid-run, records a rationale for why an agent decision was accepted or rejected, or attaches a policy note to a span of agent actions. Today, that intervention lands in the general `events` log with no direct link to the specific agent actions it modifies, forcing an auditor to reconstruct the intervention from timestamps.
 
-> "The tamper-evident history part is really nice, especially for audit handoffs. One thing that would help a lot: let me pin a custom note or human decision onto a specific span in the timeline. Right now I can see what the agent did, but if I intervened mid-run or overrode a tool call, I want that context attached right next to it instead of buried in a separate log."
+Etch's primitive-layer positioning says the audit log is the primitive that sits under any agent stack. A first-class primitive for human interventions in the signed chain directly serves that positioning: buyers running compliance-adjacent workflows (regulated AI vendors selling into fintech, healthcare, gov) need to prove *which* human overrode *what* and *when*, with the same cryptographic assurance as agent actions themselves.
 
-This describes a production workflow — mid-run human intervention, tool call override — that the current audit log does not represent as a first-class primitive. Today, a human override during an agent session lands in the general `events` log with no direct link to the specific agent actions it modified, forcing an auditor to reconstruct the intervention from timestamps.
-
-The primitive-layer positioning ([[north-star-2026-07-22]]) says Etch is the audit primitive under any agent stack. A first-class primitive for human interventions in the signed chain directly serves that positioning: buyers running compliance-adjacent workflows (regulated AI vendors selling into fintech, healthcare, gov) need to prove *which* human overrode *what* and *when*, with the same cryptographic assurance as agent actions themselves.
+Concretely: the current gap is that "the agent tried X, the human overrode with rationale Y" cannot be represented as a single verifiable claim in the chain. It must be reconstructed by correlating separate event rows, which is fragile and not auditor-friendly.
 
 ## Decision
 
@@ -127,7 +125,7 @@ Before v0.15.0 ships, the following test surface must exist and pass:
 
 ### End-to-end product-flow test (`tests/test_pin_annotation_e2e.py`)
 
-Simulates the Gülten workflow verbatim:
+Simulates the mid-run intervention workflow end-to-end:
 
 1. Start an agent session, log a few tool calls
 2. Human "intervenes" mid-run and pins a `human_intervention` annotation to the span [tool_call_2, tool_call_5]
@@ -152,7 +150,7 @@ The test must run WITHOUT the world-model-mcp process alive when the verifier ru
 ## Consequences
 
 ### Positive
-- Serves Gülten's ask directly and unlocks the "mid-run intervention" workflow for compliance buyers.
+- Represents the mid-run human intervention workflow directly, unlocking a category of compliance-adjacent buyers who need to prove human oversight cryptographically.
 - Establishes annotations as a first-class primitive at the OSS layer, reinforcing sit-under positioning.
 - Test surface exceeds the current baseline for a single feature (5 test files across unit / integration / security / e2e / property-based), setting the pattern for every v0.15.0+ feature per the engineering mandate.
 - Etch hosted gets a differentiated feature (KMS-verified author + framework mapping) without owning the primitive.
@@ -185,8 +183,7 @@ Rejected. The offline verifier is the trust root. Shipping a signed annotation t
 
 ## Related
 
-- [[gulten-annotation-feature-request]] — origin feature request
-- [[north-star-2026-07-22]] — primitive-layer positioning
-- [[engineering-mandate]] — test surface requirements
-- [[30day-build-queue-2026-07-22]] — v0.15.0 build queue containing this feature
 - [Audit log spec](../AUDIT_LOG.md) — chain of custody spec this ADR extends
+- Primitive-layer positioning notes (internal)
+- Engineering mandate (internal)
+- v0.15.0 build queue (internal)
