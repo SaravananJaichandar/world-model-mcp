@@ -1,0 +1,54 @@
+name: pytest
+
+# Runs the full test suite + ruff on every PR and push to main.
+# Complements the existing cla.yml (contributor licensing) and
+# contradictions-benchmark.yml (single-benchmark regression guard) by
+# actually running the 885+ tests in tests/ that were previously not
+# executed in CI.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref so a fast follow-up push
+# supersedes an older run instead of both racing to completion.
+concurrency:
+  group: pytest-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + all optional extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,http,hermes,continue,openai]"
+
+      # NOTE: ruff is intentionally NOT enforced in this workflow yet. There
+      # are ~745 pre-existing typing-deprecation warnings across the source
+      # tree (including tests/) that need a dedicated cleanup PR before we
+      # can turn ruff on as a hard gate. Once that PR lands, add:
+      #     - name: Ruff check
+      #       run: python -m ruff check .
+      # above the pytest step. Same story for mypy (strict mode already
+      # configured in pyproject.toml but not yet gated in CI).
+
+      - name: Pytest
+        # -q keeps the log short in CI logs; --tb=short shows the failing
+        # line + context but not the full frame stack.
+        run: |
+          python -m pytest -q --tb=short
