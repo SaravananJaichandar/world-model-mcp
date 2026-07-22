@@ -47,8 +47,16 @@ jobs:
       # above the pytest step. Same story for mypy (strict mode already
       # configured in pyproject.toml but not yet gated in CI).
 
-      - name: Pytest
+      - name: Pytest with coverage
         # -q keeps the log short in CI logs; --tb=short shows the failing
         # line + context but not the full frame stack.
+        # --cov-fail-under=69 matches the honest baseline measured on
+        # 2026-07-22 (69.74% across world_model_server). Ratchet it UP
+        # as coverage improves; NEVER lower this number to make a PR
+        # merge. The natural raise cadence: once a feature branch adds
+        # tests that lift the total by >= 1 point, bump the floor by 1.
         run: |
-          python -m pytest -q --tb=short
+          python -m pytest -q --tb=short \
+            --cov=world_model_server \
+            --cov-report=term \
+            --cov-fail-under=69

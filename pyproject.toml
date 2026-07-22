@@ -41,6 +41,14 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
+    # v0.15 test-infra: coverage reporting, property-based testing, hang
+    # detection, and order randomization. Added ahead of the pin_annotation
+    # feature landing so its test surface (unit / integration / security /
+    # e2e / property-based) has the right instrumentation from day one.
+    "pytest-cov>=5.0.0",
+    "hypothesis>=6.100",
+    "pytest-timeout>=2.3.0",
+    "pytest-randomly>=3.15.0",
     "black>=24.0.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
@@ -117,3 +125,9 @@ disallow_untyped_defs = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Hard 5-minute per-test timeout to catch hangs (individual tests can
+# override with @pytest.mark.timeout(N) for tighter bounds).
+timeout = 300
+markers = [
+    "timeout: mark a test with a specific timeout in seconds",
+]
