@@ -36,6 +36,7 @@ from world_model_server import config as config_module
 DOCS_DIR = Path(__file__).parent.parent / "docs" / "adapters"
 MESH_LLM_DOC = DOCS_DIR / "mesh-llm.md"
 BUZZ_DOC = DOCS_DIR / "buzz.md"
+GOOSE_DOC = DOCS_DIR / "goose.md"
 REPO_ROOT = Path(__file__).parent.parent
 REFERENCE_ADAPTER_CONFIG = (
     REPO_ROOT / "world_model_server" / "adapters" / "cursor" / "mcp.json"
@@ -79,17 +80,42 @@ def _extract_json_blocks(markdown_text: str) -> list[dict]:
 
 
 def _extract_referenced_env_vars(markdown_text: str) -> set[str]:
-    """Every WORLD_MODEL_* identifier referenced in bash/sh code blocks in
-    a markdown document. Used to detect stale env var names."""
-    bash_blocks = re.findall(
-        r"```(?:bash|sh)\s*\n(.*?)```",
+    """Every WORLD_MODEL_* identifier referenced in bash/sh/yaml code blocks
+    in a markdown document. Used to detect stale env var names. Includes
+    yaml blocks since Goose configures env vars via YAML `envs:` entries."""
+    code_blocks = re.findall(
+        r"```(?:bash|sh|yaml|yml)\s*\n(.*?)```",
         markdown_text,
         flags=re.DOTALL,
     )
     env_vars: set[str] = set()
-    for block in bash_blocks:
+    for block in code_blocks:
         env_vars.update(re.findall(r"\bWORLD_MODEL_[A-Z_]+", block))
     return env_vars
+
+
+def _extract_yaml_blocks(markdown_text: str) -> list[dict]:
+    """Extract fenced YAML code blocks from a markdown document. Any block
+    that fails to parse fails the test — we do not ship broken YAML."""
+    from ruamel.yaml import YAML
+
+    yaml_parser = YAML(typ="safe")
+    blocks = re.findall(
+        r"```(?:yaml|yml)\s*\n(.*?)```",
+        markdown_text,
+        flags=re.DOTALL,
+    )
+    parsed: list[dict] = []
+    for i, raw in enumerate(blocks):
+        try:
+            data = yaml_parser.load(raw)
+        except Exception as exc:  # noqa: BLE001 - test wants any parse error
+            pytest.fail(
+                f"yaml block {i} in doc failed to parse: {exc}\n---\n{raw}"
+            )
+        if data is not None:
+            parsed.append(data)
+    return parsed
 
 
 def _config_env_var_names() -> set[str]:
@@ -119,6 +145,10 @@ class TestDocsExist:
     def test_buzz_doc_exists(self) -> None:
         assert BUZZ_DOC.exists()
         assert BUZZ_DOC.stat().st_size > 0
+
+    def test_goose_doc_exists(self) -> None:
+        assert GOOSE_DOC.exists()
+        assert GOOSE_DOC.stat().st_size > 0
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +191,17 @@ class TestBUZZDocEnvVars:
         unknown = referenced - known
         assert not unknown, (
             f"buzz.md references env vars not read by Config or "
+            f"whitelisted: {sorted(unknown)}"
+        )
+
+
+class TestGooseDocEnvVars:
+    def test_all_referenced_env_vars_are_real(self) -> None:
+        referenced = _extract_referenced_env_vars(_read_doc(GOOSE_DOC))
+        known = _config_env_var_names() | NON_CONFIG_ENV_VARS
+        unknown = referenced - known
+        assert not unknown, (
+            f"goose.md references env vars not read by Config or "
             f"whitelisted: {sorted(unknown)}"
         )
 
@@ -233,22 +274,84 @@ class TestBUZZDocConfig:
 
 
 # ---------------------------------------------------------------------------
+# Goose doc: YAML extension config shape
+# ---------------------------------------------------------------------------
+
+
+class TestGooseDocConfig:
+    def test_yaml_blocks_parse(self) -> None:
+        """Every fenced ```yaml block in goose.md must be valid YAML."""
+        blocks = _extract_yaml_blocks(_read_doc(GOOSE_DOC))
+        assert blocks, "goose.md should contain at least one yaml code block"
+
+    def test_extension_config_shape(self) -> None:
+        """The Goose extension config example must have the shape Goose
+        expects at ~/.config/goose/config.yaml: extensions dict with at
+        least one entry that has cmd, args, type=stdio, enabled."""
+        blocks = _extract_yaml_blocks(_read_doc(GOOSE_DOC))
+        extension_config = next(
+            (b for b in blocks if isinstance(b, dict) and "extensions" in b),
+            None,
+        )
+        assert extension_config is not None, (
+            "goose.md must contain a yaml block with an 'extensions:' key"
+        )
+        extensions = extension_config["extensions"]
+        assert isinstance(extensions, dict) and extensions, (
+            "extensions must be a non-empty dict"
+        )
+        for ext_name, ext_config in extensions.items():
+            assert isinstance(ext_config, dict), (
+                f"extension {ext_name} must be a mapping"
+            )
+            for required_field in ("cmd", "args", "type", "enabled"):
+                assert required_field in ext_config, (
+                    f"extension {ext_name} missing required field "
+                    f"'{required_field}'"
+                )
+            assert ext_config["type"] == "stdio", (
+                f"extension {ext_name} type must be 'stdio' (only stdio is "
+                f"documented in this adapter guide)"
+            )
+            assert isinstance(ext_config["args"], list), (
+                f"extension {ext_name} args must be a list"
+            )
+
+    def test_world_model_extension_uses_module_invocation(self) -> None:
+        """The world-model extension config in goose.md must invoke the
+        server via `python -m world_model_server.server` — same module
+        path as every other adapter in this repo."""
+        blocks = _extract_yaml_blocks(_read_doc(GOOSE_DOC))
+        extension_config = next(
+            b for b in blocks if isinstance(b, dict) and "extensions" in b
+        )
+        world_model_ext = extension_config["extensions"].get("world-model")
+        assert world_model_ext is not None, (
+            "goose.md must document a 'world-model' extension entry"
+        )
+        assert world_model_ext["cmd"] == "python", (
+            f"world-model extension cmd must be 'python', got "
+            f"'{world_model_ext['cmd']}'"
+        )
+        assert world_model_ext["args"] == ["-m", "world_model_server.server"], (
+            f"world-model extension args must be ['-m', "
+            f"'world_model_server.server'], got {world_model_ext['args']}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cross-doc invariants
 # ---------------------------------------------------------------------------
 
 
 class TestAdapterDocsInvariants:
-    def test_both_docs_reference_same_mcp_module_path(self) -> None:
-        """Both adapter docs must reference the same MCP server module path.
-        If someone renames world_model_server.server, both docs must be
-        updated together."""
-        mesh = _read_doc(MESH_LLM_DOC)
-        buzz = _read_doc(BUZZ_DOC)
-        assert "world_model_server.server" in mesh, (
-            "mesh-llm.md must reference world_model_server.server as the "
-            "MCP server module path"
-        )
-        assert "world_model_server.server" in buzz, (
-            "buzz.md must reference world_model_server.server as the MCP "
-            "server module path"
-        )
+    def test_all_docs_reference_same_mcp_module_path(self) -> None:
+        """All adapter docs must reference the same MCP server module path.
+        If someone renames world_model_server.server, every doc must be
+        updated together — this test forces that."""
+        for doc_path in (MESH_LLM_DOC, BUZZ_DOC, GOOSE_DOC):
+            content = _read_doc(doc_path)
+            assert "world_model_server.server" in content, (
+                f"{doc_path.name} must reference world_model_server.server "
+                f"as the MCP server module path"
+            )
