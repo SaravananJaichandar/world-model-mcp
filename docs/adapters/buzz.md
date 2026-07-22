@@ -1,17 +1,23 @@
 # BUZZ adapter
 
-**Status: partially verified as of 2026-07-22.**
+**Status: verified end-to-end as of 2026-07-22.**
 
-Verified via source inspection:
-- `python3 -m world_model_server.server` is the stdio MCP entry (matches [`world_model_server/adapters/cursor/mcp.json`](../../world_model_server/adapters/cursor/mcp.json) and other shipped adapter configs)
+The full ACP handshake — buzz-agent binary + `world_model_server.server` MCP subprocess + tool call round-trip — is exercised by an integration test in this repo:
+
+- [tests/integration/test_buzz_acp_handshake.py](../../tests/integration/test_buzz_acp_handshake.py) — spawns a real buzz-agent binary against a local fake LLM, hands it world-model-mcp in `session/new`, and asserts a `query_fact` tool call reaches `status=completed` with a valid `QueryFactResult` payload.
+- Run it locally: see [tests/integration/README.md](../../tests/integration/README.md).
+
+Load-bearing schema facts, verified against buzz-agent source:
+
+- `python3 -m world_model_server.server` is the stdio MCP entry (matches [`world_model_server/adapters/cursor/mcp.json`](../../world_model_server/adapters/cursor/mcp.json))
 - `WORLD_MODEL_DB_PATH` env var is real (`world_model_server/config.py:15`)
-- `WORLD_MODEL_AUDIT_LOG=on` is real (used elsewhere in this repo's docs)
-- buzz-agent spawns MCP servers via ACP `session/new` (per [BUZZ VISION_AGENT.md](https://github.com/block/buzz/blob/main/VISION_AGENT.md): *"MCP is the only interface to the tools. No runtime coupling."*)
+- `WORLD_MODEL_AUDIT_LOG=on` is real
+- `mcpServers[].env` is a **list of `{name, value}` objects** (per `crates/buzz-agent/src/types.rs::McpServerStdio`), NOT a dict.
+- The MCP server name should not contain `-` (dash), because buzz-agent generates the qualified tool name as `{server_name}__{tool_name}`, and downstream LLM providers may reject function names containing dashes. Prefer `world_model` over `world-model`.
 
-Not yet verified end-to-end:
-- Live handshake between the BUZZ desktop app / buzz-acp orchestrator and `world_model_server.server` under `session/new`
-- Behavior when `buzz-dev-mcp` and `world-model-mcp` are spawned in the same session
-- Whether the BUZZ desktop app exposes a UI for adding custom MCP servers, or whether the ACP client config must be edited directly
+Not verified in this repo:
+- BUZZ desktop app UI for adding custom MCP servers — the app orchestrates buzz-agent, so the underlying ACP path is the same, but the UI surface for pointing at a custom MCP server may vary by version.
+- buzz-audit interaction under high concurrency — beyond scope of this adapter's verification.
 
 **File an issue at `github.com/SaravananJaichandar/world-model-mcp` if you hit a gap.**
 
@@ -69,21 +75,26 @@ Example `session/new` payload with `buzz-dev-mcp` and `world-model-mcp` both spa
         "name": "buzz-dev-mcp",
         "command": "buzz-dev-mcp",
         "args": [],
-        "env": {}
+        "env": []
       },
       {
-        "name": "world-model",
+        "name": "world_model",
         "command": "python3",
         "args": ["-m", "world_model_server.server"],
-        "env": {
-          "WORLD_MODEL_DB_PATH": ".claude/world-model",
-          "WORLD_MODEL_AUDIT_LOG": "on"
-        }
+        "env": [
+          {"name": "WORLD_MODEL_DB_PATH", "value": ".claude/world-model"},
+          {"name": "WORLD_MODEL_AUDIT_LOG", "value": "on"}
+        ]
       }
     ]
   }
 }
 ```
+
+**Two schema details that trip up first-time integrators:**
+
+1. `env` is a list of `{"name", "value"}` objects, not a dict. Wrong shape returns an ACP error.
+2. Server name should use `_` not `-`. buzz-agent qualifies tool names as `{server_name}__{tool_name}`, and some LLM providers (including OpenAI) reject function names containing dashes.
 
 Notes:
 - The `mcpServers` array shape follows the ACP spec, not a BUZZ-specific extension
@@ -120,10 +131,10 @@ Every memory write and Coach verification is chained into a signed Merkle log ve
 
 ## Known limits
 
-- **End-to-end handshake is unverified as of this writing.** See status marker at top of doc.
-- **BUZZ ACP session/new schema may drift.** Always check against your buzz-acp version.
+- **BUZZ ACP session/new schema may drift.** Always check against your buzz-acp version. The integration test in this repo pins the currently-verified shape; if it fails against a newer buzz build, update the test and the schema note in the docs together.
 - **Multiple MCP servers per session** — supported per BUZZ architecture; world-model-mcp itself is lightweight (Python stdio, one process per session).
-- **Nostr identity binding** — world-model-mcp does not yet accept Nostr keys as agent identity. On roadmap.
+- **Nostr identity binding** — world-model-mcp does not yet accept Nostr keys as agent identity. On roadmap. In the interim, the annotation `author` field can carry an npub as a free-form string.
+- **FTS5 metacharacters in queries.** Queries containing `-`, `?`, or `*` may hit an FTS5 sanitizer edge case in older world-model-mcp versions; v0.12.14+ fixes this. Use v0.14+ with BUZZ.
 
 ## Related
 

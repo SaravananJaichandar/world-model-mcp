@@ -276,9 +276,12 @@ class TestBUZZDocConfig:
 
     def test_world_model_server_command_matches_reference(self) -> None:
         """The world-model MCP server invocation in buzz.md must match the
-        one shipped in every other adapter (e.g. Cursor). If the module
-        path or command changes, all adapter docs need updating together —
-        this test forces that."""
+        one shipped in every other adapter (e.g. Cursor) on command + args.
+        The server NAME is intentionally per-runtime: Cursor and most
+        adapters use `world-model` (dash), BUZZ uses `world_model`
+        (underscore) because buzz-agent qualifies tool names as
+        `{server_name}__{tool_name}` and some LLM providers reject
+        function names containing dashes."""
         reference = json.loads(REFERENCE_ADAPTER_CONFIG.read_text())
         ref_world_model = reference["mcpServers"]["world-model"]
         ref_command = ref_world_model["command"]
@@ -288,9 +291,12 @@ class TestBUZZDocConfig:
         session_new = next(
             b for b in blocks if b.get("method") == "session/new"
         )
+        # Match by module-path substring rather than exact name; the
+        # server can be named world-model or world_model per runtime
+        # convention, but the command+args must match the reference.
         world_model_server = next(
             s for s in session_new["params"]["mcpServers"]
-            if s["name"] == "world-model"
+            if "world_model_server.server" in s.get("args", [])
         )
 
         assert world_model_server["command"] == ref_command, (
@@ -302,6 +308,31 @@ class TestBUZZDocConfig:
             f"BUZZ doc world-model args {world_model_server['args']} do "
             f"not match reference adapter args {ref_args}"
         )
+
+    def test_env_shape_is_acp_list_of_name_value(self) -> None:
+        """Regression test for a real integration bug caught 2026-07-22:
+        the ACP McpServerStdio spec (buzz-agent/src/types.rs::EnvVar)
+        requires env as a LIST of {name, value} objects, not a dict.
+        buzz-agent silently rejects the wrong shape at session/new. Every
+        mcpServers[].env in the doc must therefore be a list."""
+        blocks = _extract_json_blocks(_read_doc(BUZZ_DOC))
+        session_new = next(
+            b for b in blocks if b.get("method") == "session/new"
+        )
+        for i, server in enumerate(session_new["params"]["mcpServers"]):
+            env = server.get("env")
+            assert isinstance(env, list), (
+                f"server {i} env is {type(env).__name__}, must be a list "
+                f"of {{name, value}} objects per ACP McpServerStdio schema"
+            )
+            for j, entry in enumerate(env):
+                assert isinstance(entry, dict), (
+                    f"server {i} env[{j}] is not a dict"
+                )
+                assert set(entry.keys()) == {"name", "value"}, (
+                    f"server {i} env[{j}] must have exactly the keys "
+                    f"{{name, value}}, got {sorted(entry.keys())}"
+                )
 
 
 # ---------------------------------------------------------------------------
