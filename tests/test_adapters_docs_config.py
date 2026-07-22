@@ -34,6 +34,7 @@ import pytest
 from world_model_server import config as config_module
 
 DOCS_DIR = Path(__file__).parent.parent / "docs" / "adapters"
+ADAPTER_INDEX_DOC = DOCS_DIR / "README.md"
 MESH_LLM_DOC = DOCS_DIR / "mesh-llm.md"
 BUZZ_DOC = DOCS_DIR / "buzz.md"
 GOOSE_DOC = DOCS_DIR / "goose.md"
@@ -138,6 +139,10 @@ def _config_env_var_names() -> set[str]:
 
 
 class TestDocsExist:
+    def test_adapter_index_exists(self) -> None:
+        assert ADAPTER_INDEX_DOC.exists()
+        assert ADAPTER_INDEX_DOC.stat().st_size > 0
+
     def test_mesh_llm_doc_exists(self) -> None:
         assert MESH_LLM_DOC.exists()
         assert MESH_LLM_DOC.stat().st_size > 0
@@ -149,6 +154,32 @@ class TestDocsExist:
     def test_goose_doc_exists(self) -> None:
         assert GOOSE_DOC.exists()
         assert GOOSE_DOC.stat().st_size > 0
+
+
+class TestAdapterIndex:
+    """The adapter README acts as the entry point for anyone landing in
+    docs/adapters/. It must link to every adapter doc that exists in the
+    directory, and it must reference the validation contract so
+    contributors know new adapters require validation tests."""
+
+    def test_index_links_to_every_adapter_doc(self) -> None:
+        index = _read_doc(ADAPTER_INDEX_DOC)
+        for adapter_doc in (MESH_LLM_DOC, BUZZ_DOC, GOOSE_DOC):
+            filename = adapter_doc.name
+            assert filename in index, (
+                f"docs/adapters/README.md must reference {filename} so "
+                f"the adapter is discoverable from the index. Missing."
+            )
+
+    def test_index_documents_validation_contract(self) -> None:
+        """New contributors must see that adapter docs require tests. The
+        README should mention the test file that enforces this."""
+        index = _read_doc(ADAPTER_INDEX_DOC)
+        assert "test_adapters_docs_config.py" in index, (
+            "docs/adapters/README.md must reference "
+            "tests/test_adapters_docs_config.py so contributors know new "
+            "adapters require matching validation tests."
+        )
 
 
 # ---------------------------------------------------------------------------
