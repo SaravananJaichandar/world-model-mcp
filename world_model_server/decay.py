@@ -125,7 +125,16 @@ def compute_decayed_confidence(
         return 0.0
     if decayed > 1.0:
         return 1.0
-    return decayed
+    # Quantize to 6 decimals at the function boundary. IEEE 754 double
+    # multiplication of confidence * (0.5 ** half_lives) produces
+    # platform-dependent last-bit drift, most visibly when age_days is
+    # small (sub-second wall clock in tests): macOS often lands on the
+    # input value exactly, Linux lands ~1e-8 below. Confidence values
+    # are never consumed at more than a few decimals of precision
+    # anywhere in the system (thresholds like 0.8, 0.6 are exact), so
+    # 6 decimals is a semantically stable output floor that eliminates
+    # the platform drift without discarding any real information.
+    return round(decayed, 6)
 
 
 def should_auto_supersede(
