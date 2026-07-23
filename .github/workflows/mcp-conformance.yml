@@ -1,0 +1,157 @@
+name: mcp-conformance
+
+# Day 8-14 rollout of the P0 testing stack per the deep-research report
+# (memory: project_testing_stack_p0_picks_2026-07-23). Runs MCPJam Inspector
+# CLI against a real subprocess of world-model-mcp to catch MCP JSON-RPC
+# wire and stdio-transport conformance regressions before they ship.
+#
+# Complements pytest.yml (functional tests) and security.yml (SAST/SCA/secrets).
+#
+# References:
+#   - MCPJam Inspector: https://github.com/MCPJam/inspector
+#   - MCPJam CLI docs:  https://docs.mcpjam.com/cli/overview
+#
+# Why this exists in CI:
+#   Schemathesis is scoped to OpenAPI/GraphQL only and has no JSON-RPC 2.0
+#   loader. MCPJam is the P0 conformance tester for MCP stdio servers per
+#   the deep-research report (Category C P0). Runs two checks against a
+#   fresh `python -m world_model_server.server` subprocess:
+#
+#     - `server doctor`: stateless diagnostic sweep verifying the stdio
+#       connection, initialize handshake, server-declared capabilities,
+#       tool surface enumeration, and resource/prompt surface enumeration.
+#     - `server validate`: connect + inspect + close, exercising the same
+#       path a live debugger session would.
+#
+# Rule bound to this workflow: any non-zero exit from either check blocks
+# merge. Root-cause fix conformance regressions before merge — do not
+# disable the gate. The MCPJam CLI is pinned to a specific version so
+# upgrades are deliberate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: mcp-conformance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mcpjam-doctor:
+    name: MCPJam server doctor (stateless diagnostic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Base install is enough for the MCP surface — no need for optional
+      # extras. Keeping the workflow lean and audit-independent from
+      # pytest.yml's install matrix.
+      - name: Install world-model-mcp
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      # MCPJam CLI pinned to 3.15.2 (verified locally against
+      # world-model-mcp on 2026-07-23: 30 tools discovered, all checks
+      # ok, exit 0). Bump this pin deliberately in a follow-up PR when
+      # MCPJam releases a new version.
+      - name: MCPJam server doctor
+        run: |
+          set -euo pipefail
+          TMPDB=$(mktemp -d)
+          npx -y @mcpjam/cli@3.15.2 server doctor \
+            --transport stdio \
+            --command python3 \
+            --args -m \
+            --args world_model_server.server \
+            -e "WORLD_MODEL_DB_PATH=$TMPDB" \
+            --cwd "$GITHUB_WORKSPACE" \
+            --format json \
+            --out /tmp/mcpjam-doctor.json
+          # Log the check summary for CI-log triage visibility. The CLI
+          # exit code is what actually gates the job.
+          python3 - <<'PY'
+          import json, sys
+          with open('/tmp/mcpjam-doctor.json') as fh:
+              d = json.load(fh)
+          checks = d.get('checks', {})
+          print('=== MCPJam doctor check summary ===')
+          for name, r in checks.items():
+              status = r.get('status', '?')
+              detail = r.get('detail', '')
+              print(f'  {name:22s} {status:10s} {detail}')
+          print(f'\ntools discovered:      {len(d.get("tools", []))}')
+          print(f'resources discovered:  {len(d.get("resources", []))}')
+          print(f'prompts discovered:    {len(d.get("prompts", []))}')
+          server = d.get('initInfo', {}).get('serverVersion', {})
+          print(f'server SDK version:    {server.get("name", "?")} {server.get("version", "?")}')
+          # Sanity: at minimum the connection and initialization checks must
+          # be 'ok'. The CLI already exits non-zero on failure, but assert
+          # here as belt-and-braces so a future CLI change that softens exit
+          # semantics still fails this job loudly.
+          for critical in ('connection', 'initialization', 'capabilities', 'tools'):
+              if checks.get(critical, {}).get('status') != 'ok':
+                  print(f'\nCRITICAL check {critical} did not pass', file=sys.stderr)
+                  sys.exit(1)
+          PY
+
+      - name: Upload doctor artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpjam-doctor-json
+          path: /tmp/mcpjam-doctor.json
+          retention-days: 30
+
+  mcpjam-validate:
+    name: MCPJam server validate (debugger surface)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install world-model-mcp
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: MCPJam server validate
+        run: |
+          set -euo pipefail
+          TMPDB=$(mktemp -d)
+          npx -y @mcpjam/cli@3.15.2 server validate \
+            --transport stdio \
+            --command python3 \
+            --args -m \
+            --args world_model_server.server \
+            -e "WORLD_MODEL_DB_PATH=$TMPDB" \
+            --cwd "$GITHUB_WORKSPACE"
