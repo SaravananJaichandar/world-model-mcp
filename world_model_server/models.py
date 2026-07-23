@@ -338,6 +338,23 @@ class QueryFactResult(BaseModel):
     alternatives: List[str] = Field(default_factory=list)
 
 
+class PinAnnotationResult(BaseModel):
+    """Result of pinning a signed human annotation to a span of agent events
+    (v0.15.0 pin_annotation, ADR-0001).
+
+    epoch_id and signature_hash are populated when the annotation lands in
+    a signed Merkle epoch; both remain None while the annotation sits in
+    the open backlog. `signed` reflects that state as a boolean so callers
+    do not need to reason about NULL semantics — False means the entry is
+    persisted but not yet cryptographically anchored.
+    """
+
+    annotation_id: str
+    epoch_id: Optional[int] = None
+    signed: bool = False
+    signature_hash: Optional[str] = None
+
+
 class VerificationResult(BaseModel):
     """Result of the Coach adversarial verification pass (v0.12.12).
 

@@ -27,7 +27,19 @@ from .models import (
     SimulationResult,
     TestFailurePrediction,
     HealthReport,
+    PinAnnotationResult,
 )
+
+
+# v0.15.0 pin_annotation (ADR-0001).
+# Kept at module scope so tests can import and assert against them
+# without pulling in the wider tools stack.
+PIN_ANNOTATION_TYPES = (
+    "human_intervention",
+    "human_note",
+    "override_justification",
+)
+PIN_ANNOTATION_MAX_RATIONALE_BYTES = 8 * 1024  # 8 KB per ADR-0001
 from .config import Config
 from .extraction import EntityExtractor
 from .linters import LinterIntegration
@@ -670,6 +682,77 @@ class WorldModelTools:
         did = await self.kg.record_decision(decision)
         logger.info(f"Decision recorded: {did} ({decision_type})")
         return json.dumps({"decision_id": did, "decision_type": decision_type})
+
+    # ============================================================================
+    # Tool 9b: pin_annotation (v0.15.0, ADR-0001)
+    # ============================================================================
+
+    async def pin_annotation(
+        self,
+        session_id: str,
+        event_range_start: str,
+        event_range_end: str,
+        author: str,
+        rationale: str,
+        annotation_type: str,
+    ) -> str:
+        """Attach a signed human annotation (note / override rationale /
+        intervention record) to a span of agent events.
+
+        Day 2 scope: input validation + persistence. The annotation is
+        stored in the annotations table with epoch_id and signature
+        NULL. Day 3+ (chain integration) will populate those fields
+        when the annotation lands in a signed Merkle epoch.
+
+        Validation lives at this layer as well as at the DB level (CHECK
+        + NOT NULL) — belt-and-braces plus clearer error messages for
+        MCP callers than a raw sqlite3.IntegrityError.
+        """
+        if annotation_type not in PIN_ANNOTATION_TYPES:
+            raise ValueError(
+                f"annotation_type must be one of {PIN_ANNOTATION_TYPES}, "
+                f"got {annotation_type!r}"
+            )
+        if not session_id:
+            raise ValueError("session_id must be non-empty")
+        if not event_range_start:
+            raise ValueError("event_range_start must be non-empty")
+        if not event_range_end:
+            raise ValueError("event_range_end must be non-empty")
+        if not author:
+            raise ValueError("author must be non-empty")
+        if not rationale:
+            raise ValueError("rationale must be non-empty")
+        rationale_bytes = len(rationale.encode("utf-8"))
+        if rationale_bytes > PIN_ANNOTATION_MAX_RATIONALE_BYTES:
+            raise ValueError(
+                f"rationale exceeds {PIN_ANNOTATION_MAX_RATIONALE_BYTES}-"
+                f"byte limit ({rationale_bytes} bytes) per ADR-0001"
+            )
+
+        annotation_id = await self.kg.insert_annotation(
+            session_id=session_id,
+            event_range_start=event_range_start,
+            event_range_end=event_range_end,
+            author=author,
+            rationale=rationale,
+            annotation_type=annotation_type,
+        )
+        logger.info(
+            f"Annotation pinned: {annotation_id} "
+            f"(type={annotation_type}, session={session_id})"
+        )
+
+        # Day 2: chain not yet wired, so signed=False and epoch_id +
+        # signature_hash are None. Day 3 will populate these when the
+        # annotation lands in a signed epoch.
+        result = PinAnnotationResult(
+            annotation_id=annotation_id,
+            epoch_id=None,
+            signed=False,
+            signature_hash=None,
+        )
+        return json.dumps(result.model_dump())
 
     # ============================================================================
     # Tool 10: get_decision_log (v0.4.0)

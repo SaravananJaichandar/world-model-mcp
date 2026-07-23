@@ -616,6 +616,45 @@ class KnowledgeGraph:
             )
             await db.commit()
 
+    async def insert_annotation(
+        self,
+        session_id: str,
+        event_range_start: str,
+        event_range_end: str,
+        author: str,
+        rationale: str,
+        annotation_type: str,
+    ) -> str:
+        """Persist a pin_annotation row and return its id.
+
+        Day 2 scope per ADR-0001: storage only. epoch_id and signature
+        stay NULL until Day 3+ wires the annotation into the Merkle
+        chain epoch-close path with the distinct DOMAIN_ANNOTATION
+        prefix. Callers should treat the returned annotation_id as the
+        stable handle used for future prove_annotation_inclusion calls.
+        """
+        import uuid as _uuid
+
+        annotation_id = str(_uuid.uuid4())
+        async with aiosqlite.connect(self.annotations_db) as db:
+            await db.execute(
+                "INSERT INTO annotations "
+                "(id, session_id, event_range_start, event_range_end, "
+                " author, rationale, annotation_type) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    annotation_id,
+                    session_id,
+                    event_range_start,
+                    event_range_end,
+                    author,
+                    rationale,
+                    annotation_type,
+                ),
+            )
+            await db.commit()
+        return annotation_id
+
     # ============================================================================
     # Entity Operations
     # ============================================================================

@@ -253,6 +253,58 @@ async def main():
                 },
             ),
             Tool(
+                name="pin_annotation",
+                description=(
+                    "Attach a signed human annotation (note, override "
+                    "rationale, or intervention record) to a span of agent "
+                    "events. Persists into the annotations table and "
+                    "chains into the same Merkle audit log as agent "
+                    "writes (v0.15.0, ADR-0001). Rationale limited to 8 KB."
+                ),
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string",
+                            "description": "Session containing the annotated events.",
+                        },
+                        "event_range_start": {
+                            "type": "string",
+                            "description": "First event_id in the annotated span.",
+                        },
+                        "event_range_end": {
+                            "type": "string",
+                            "description": "Last event_id in the annotated span. Equals event_range_start for a single-event annotation.",
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "Author identity. Self-asserted in OSS; KMS-verified in Etch hosted.",
+                        },
+                        "rationale": {
+                            "type": "string",
+                            "description": "Human rationale text (UTF-8). Max 8192 bytes.",
+                            "maxLength": 8192,
+                        },
+                        "annotation_type": {
+                            "type": "string",
+                            "enum": [
+                                "human_intervention",
+                                "human_note",
+                                "override_justification",
+                            ],
+                        },
+                    },
+                    "required": [
+                        "session_id",
+                        "event_range_start",
+                        "event_range_end",
+                        "author",
+                        "rationale",
+                        "annotation_type",
+                    ],
+                },
+            ),
+            Tool(
                 name="get_decision_log",
                 description="Get decision traces showing agent proposals and human corrections",
                 inputSchema={
@@ -647,6 +699,15 @@ async def main():
                 )
                 return [TextContent(type="text", text=result)]
 
+            elif name == "pin_annotation":
+                result = await tools.pin_annotation(
+                    session_id=arguments["session_id"],
+                    event_range_start=arguments["event_range_start"],
+                    event_range_end=arguments["event_range_end"],
+                    author=arguments["author"],
+                    rationale=arguments["rationale"],
+                    annotation_type=arguments["annotation_type"],
+                )
             elif name == "record_decision":
                 result = await tools.record_decision(
                     session_id=arguments["session_id"],
