@@ -239,23 +239,22 @@ class TestPayloadShape:
     async def test_payload_does_not_contain_rationale_text(
         self, kg_with_audit: KnowledgeGraph,
     ) -> None:
-        secret_marker = "SECRET-PII-MARKER-8b6f2a"
+        pii_canary = "rationale-leak-canary-token"
         await kg_with_audit.insert_annotation(
             session_id="sess-1",
             event_range_start="evt-1",
             event_range_end="evt-2",
             author="alice",
-            rationale=f"reviewed {secret_marker} and approved",
+            rationale=f"reviewed {pii_canary} and approved",
             annotation_type="human_note",
         )
-        # Read the entire tamper_evident_log.db as raw bytes and confirm
-        # the secret marker does not appear anywhere. This is a stronger
-        # guarantee than checking the recomputed payload keys — it
-        # catches any accidental logging path that might dump rationale
-        # into the audit DB.
+        # Read the entire audit_db as raw bytes and confirm the canary
+        # token does not appear anywhere. Stronger than a key-set check
+        # on the recomputed payload — this catches any accidental
+        # logging path that might dump rationale into the audit DB.
         with open(kg_with_audit.audit_db, "rb") as f:
             audit_bytes = f.read()
-        assert secret_marker.encode("utf-8") not in audit_bytes, (
+        assert pii_canary.encode("utf-8") not in audit_bytes, (
             "rationale text leaked into audit_db"
         )
 

@@ -37,5 +37,13 @@ regexes = [
   # codebase (world_model_server/tamper_evident.py, hybrid_signer.py)
   # are hard-coded ASCII strings; gitleaks may key on their hex form
   # when hashed. Allow the domain string prefix pattern explicitly.
-  '''world-model-mcp/transparency-log/(genesis|leaf|head)/v1''',
+  # v0.15.0 adds "annotation" per ADR-0001 (DOMAIN_ANNOTATION).
+  '''world-model-mcp/transparency-log/(genesis|leaf|head|annotation)/v1''',
+  # v0.15.0 pin_annotation Day 3 test file used a marker literal that
+  # tripped the generic-api-key entropy detector as a false positive
+  # (the literal is a test constant proving PII does not leak into
+  # audit_db). Current tree renamed it to a non-triggering token; this
+  # allowlist covers the string in the historical commit c3ce119 so
+  # full-history scans stay green.
+  '''SECRET-PII-MARKER-[0-9a-f]{6}''',
 ]
