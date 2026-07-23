@@ -1,0 +1,41 @@
+# gitleaks config for world-model-mcp
+#
+# Runs both in CI (.github/workflows/security.yml) and locally via the
+# pre-commit hook declared in .pre-commit-config.yaml.
+#
+# The default gitleaks rulepack (bundled with the binary) already covers
+# common secret patterns: AWS keys, GCP keys, Anthropic keys, OpenAI keys,
+# GitHub tokens, generic high-entropy strings, etc. We do NOT redefine
+# rules here — we extend the default with an allowlist for known-safe
+# patterns that would otherwise false-positive.
+
+title = "world-model-mcp gitleaks config"
+
+[extend]
+# Explicitly build on top of the bundled default rules.
+useDefault = true
+
+[allowlist]
+description = "Known non-secret patterns that would false-positive against default rules."
+
+paths = [
+  # Wycheproof cryptographic test vectors: public keys and signatures are
+  # intentionally present. None are private key material.
+  '''^tests/security/vectors/.*\.json$''',
+  # Example configurations that ship intentionally-fake credentials.
+  '''^\.env\.example$''',
+  # World-model-mcp adapter config templates ship placeholder env values
+  # (e.g. "your-anthropic-api-key-here") — no real secrets.
+  '''^world_model_server/adapters/.*\.(json|toml|yaml)$''',
+  # Test fixtures may contain deterministic fake credentials.
+  '''^tests/.*(fixtures|data)/''',
+]
+
+regexes = [
+  # Deterministic 32-hex-byte constants that appear in cryptographic
+  # documentation are not secrets. Domain-separator constants in our
+  # codebase (world_model_server/tamper_evident.py, hybrid_signer.py)
+  # are hard-coded ASCII strings; gitleaks may key on their hex form
+  # when hashed. Allow the domain string prefix pattern explicitly.
+  '''world-model-mcp/transparency-log/(genesis|leaf|head)/v1''',
+]

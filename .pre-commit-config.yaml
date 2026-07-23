@@ -1,0 +1,26 @@
+# Pre-commit hooks for world-model-mcp.
+#
+# Contributors: enable with `pre-commit install` after `pip install
+# pre-commit` (or `pipx install pre-commit`). Same hooks run in CI via
+# .github/workflows/security.yml so protection is enforced regardless.
+
+repos:
+  # Secret scanning at commit time. Uses .gitleaks.toml at the repo root.
+  # Pin gitleaks to a specific version so upgrades are deliberate.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+
+  # Local version-consistency check: pyproject.toml, __init__.py,
+  # server.json (both .version and .packages[0].version), and manifest.json
+  # must all agree. Prevents release-day surprises like the one we hit
+  # on v0.14.1.
+  - repo: local
+    hooks:
+      - id: check-version-consistency
+        name: Check version consistency across manifests
+        entry: python3 scripts/check_version_consistency.py
+        language: system
+        pass_filenames: false
+        files: '(pyproject\.toml|world_model_server/__init__\.py|server\.json|manifest\.json)'

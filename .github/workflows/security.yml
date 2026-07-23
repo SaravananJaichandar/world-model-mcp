@@ -1,0 +1,90 @@
+name: security
+
+# Days 1-7 of the testing-stack-p0-picks-2026-07-23 rollout: hard-gate
+# dependency vulnerability scanning + secret scanning on every PR and
+# push-to-main. Complements pytest.yml (functional tests) and cla.yml
+# (contributor licensing).
+#
+# Reference sources:
+#   - pip-audit is PyPA-official (maintained by Trail of Bits + Google)
+#     https://github.com/pypa/pip-audit
+#     https://github.com/pypa/gh-action-pip-audit
+#   - PyPI Trusted Publishing + Sigstore attestations post-mortem
+#     (Dec 2024 Ultralytics compromise):
+#     https://blog.pypi.org/posts/2024-12-11-ultralytics-attack-analysis/
+#   - gitleaks: https://github.com/gitleaks/gitleaks
+#
+# Rule bound to this workflow: any PR that fails either job blocks merge.
+# The floor ratchets in one direction — do not disable a job to make a
+# PR green. Root-cause the vulnerability or the leaked secret first.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit:
+    name: pip-audit (dependency vulnerabilities)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # pypa/gh-action-pip-audit resolves the pyproject dependency set
+      # (including optional extras) and audits against OSV. Exit codes:
+      # 0 = clean, 1 = vulnerable. No silent-suppression mode.
+      - name: pip-audit
+        uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          inputs: pyproject.toml
+          # Match the extras the pytest workflow installs so we audit the
+          # actual dependency surface the tests execute against.
+          extra-args: --disable-pip
+
+  gitleaks:
+    name: gitleaks (secret scanning)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan the entire git log, not
+          # just the shallow clone.
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        # Install the binary directly rather than via a wrapper action;
+        # keeps the workflow independent of gitleaks-action's license
+        # gate and dependency footprint. Pinned to match the version in
+        # .pre-commit-config.yaml so local and CI runs use the same tool.
+        run: |
+          GITLEAKS_VERSION=8.24.0
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Run gitleaks
+        # Uses .gitleaks.toml at the repo root for allowlists. --redact
+        # prevents accidentally logging the secret itself in CI output;
+        # the tool still returns exit code 1 when a leak is detected.
+        run: |
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --redact \
+            --verbose \
+            --exit-code 1
