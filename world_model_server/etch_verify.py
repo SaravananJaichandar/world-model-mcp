@@ -35,14 +35,22 @@ from __future__ import annotations
 
 import argparse
 import base64
+import contextlib
 import hashlib
+import io
 import json
 import sys
 from pathlib import Path
 
-from . import audit_dump as _dump
-from . import hybrid_signer as hs
-from . import tamper_evident
+# The liboqs-python C library prints "liboqs-python faulthandler is
+# disabled" to stdout on first import. Auditors piping
+# `etch-verify --json` to jq would hit unparseable input otherwise.
+# Redirect stdout to /dev/null while the crypto import chain warms up,
+# then restore before any user-facing output happens.
+with contextlib.redirect_stdout(io.StringIO()):
+    from . import audit_dump as _dump  # noqa: E402
+    from . import hybrid_signer as hs  # noqa: E402
+    from . import tamper_evident  # noqa: E402
 
 
 class VerificationReport:

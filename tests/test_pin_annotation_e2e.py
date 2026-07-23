@@ -26,6 +26,9 @@ subprocess-driven CLI E2E is tracked as a follow-up.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 from unittest import mock
 
@@ -157,3 +160,32 @@ class TestMidRunInterventionEndToEnd:
                 assert rp["annotation_type"] == "human_intervention"
                 assert rp["author"] == "compliance-reviewer@ops"
                 assert rp["rationale_hash"].startswith("sha256:")
+
+                # (7) Compliance-facing step ADR-0001 §5 e2e lists as
+                # "Run the offline etch-verify CLI against the dump":
+                # export the audit chain to a manifest, shell out to
+                # the actual CLI subprocess, confirm exit 0 + VERDICT
+                # OK. This is what a buyer's auditor literally runs
+                # against a signed dump.
+                from world_model_server import audit_dump
+
+                dump_path = os.path.join(tmp, "dump.json")
+                await audit_dump.export_audit_dump_to_file(kg, dump_path)
+                cli = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "world_model_server.etch_verify",
+                        dump_path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                assert cli.returncode == 0, (
+                    f"etch-verify CLI rejected the E2E dump. "
+                    f"stderr: {cli.stderr!r}\nstdout: {cli.stdout!r}"
+                )
+                assert "VERDICT: OK" in cli.stdout
+                assert "[PASS] annotation_content_lock" in cli.stdout
+                assert "[PASS] event_content_lock" in cli.stdout
