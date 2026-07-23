@@ -504,11 +504,16 @@ async def test_get_constraint_decay_candidates(kg):
 
 @pytest.mark.asyncio
 async def test_get_db_sizes(kg):
-    """All 9 DBs should have size info."""
+    """All 10 DBs should have size info.
+
+    v0.15.0: annotations.db added for the pin_annotation storage layer
+    per docs/decisions/0001-pin-annotation-mcp-tool.md.
+    """
     sizes = await kg.get_db_sizes()
-    assert len(sizes) == 9
+    assert len(sizes) == 10
     for name in ["entities.db", "facts.db", "constraints.db", "decisions.db",
-                 "outcomes.db", "trajectories.db", "events.db", "relationships.db", "sessions.db"]:
+                 "outcomes.db", "trajectories.db", "events.db",
+                 "relationships.db", "sessions.db", "annotations.db"]:
         assert name in sizes
 
 

@@ -85,6 +85,11 @@ class KnowledgeGraph:
         self.outcomes_db = self.db_path / "outcomes.db"
         self.trajectories_db = self.db_path / "trajectories.db"
         self.audit_db = self.db_path / "audit.db"
+        # v0.15.0 pin_annotation (ADR-0001): human notes / override rationales
+        # attached to a span of agent events, signed into the same Merkle
+        # chain as agent writes. Table lives in its own DB file for the
+        # same per-entity isolation reasons events / decisions do.
+        self.annotations_db = self.db_path / "annotations.db"
 
         # Query cache with TTL (seconds)
         self._cache: Dict[str, Tuple[float, Any]] = {}
@@ -126,6 +131,10 @@ class KnowledgeGraph:
         await self._create_outcomes_schema()
         await self._create_trajectories_schema()
         await self._create_audit_schema()
+        # v0.15.0 pin_annotation storage. Schema only in this release; the
+        # MCP tool + verifier + Merkle chain integration land in v0.15.0+
+        # per docs/decisions/0001-pin-annotation-mcp-tool.md.
+        await self._create_annotations_schema()
         # v0.13 opt-in tamper-evident log. Off by default so existing users
         # do not gain a new table on upgrade without asking. Enable with
         # WORLD_MODEL_AUDIT_LOG=on. See docs/AUDIT_LOG.md.
@@ -546,6 +555,64 @@ class KnowledgeGraph:
             )
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_events_entity ON events(entity_id)"
+            )
+            await db.commit()
+
+    async def _create_annotations_schema(self) -> None:
+        """Create the annotations table + indexes for the pin_annotation
+        MCP tool (v0.15.0, ADR-0001).
+
+        An annotation attaches a signed human note or override rationale
+        to a span of agent events in a session. The CHECK constraint on
+        annotation_type enforces the closed vocabulary at the storage
+        layer so a bad type never reaches the Merkle chain path.
+
+        epoch_id is populated when the annotation lands in a signed
+        epoch; NULL while it is still in the open backlog. session_id,
+        event_range_start, event_range_end, author, and rationale are
+        all NOT NULL because an annotation without those fields is not
+        a meaningful audit-trail entry — the storage layer refuses to
+        persist one.
+        """
+        async with aiosqlite.connect(self.annotations_db) as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS annotations (
+                    id TEXT PRIMARY KEY,
+                    epoch_id INTEGER,
+                    session_id TEXT NOT NULL,
+                    event_range_start TEXT NOT NULL,
+                    event_range_end TEXT NOT NULL,
+                    author TEXT NOT NULL,
+                    rationale TEXT NOT NULL,
+                    annotation_type TEXT NOT NULL CHECK(
+                        annotation_type IN (
+                            'human_intervention',
+                            'human_note',
+                            'override_justification'
+                        )
+                    ),
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    signature BLOB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_annotations_session "
+                "ON annotations(session_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_annotations_epoch "
+                "ON annotations(epoch_id)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_annotations_range "
+                "ON annotations(event_range_start, event_range_end)"
+            )
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_annotations_type "
+                "ON annotations(annotation_type)"
             )
             await db.commit()
 
@@ -1936,7 +2003,13 @@ class KnowledgeGraph:
         return sorted(results, key=lambda r: r["failure_rate"], reverse=True)
 
     async def get_db_sizes(self) -> Dict[str, int]:
-        """Get file sizes of all 9 databases."""
+        """Get file sizes of all 10 databases.
+
+        Includes annotations.db as of v0.15.0 (ADR-0001 pin_annotation).
+        audit.db is intentionally excluded — it is managed on a
+        different lifecycle (opt-in tamper-evident log) and its size
+        semantics are reported by the audit-head endpoint instead.
+        """
         dbs = {
             "entities.db": self.entities_db,
             "facts.db": self.facts_db,
@@ -1947,6 +2020,7 @@ class KnowledgeGraph:
             "decisions.db": self.decisions_db,
             "outcomes.db": self.outcomes_db,
             "trajectories.db": self.trajectories_db,
+            "annotations.db": self.annotations_db,
         }
         return {
             name: path.stat().st_size if path.exists() else 0
