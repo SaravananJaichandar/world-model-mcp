@@ -53,6 +53,13 @@ dev = [
     "ruff>=0.3.0",
     "mypy>=1.8.0",
     "httpx>=0.27.0",
+    # PYSEC-2026-3447 fix: setuptools < 83.0.0 has a MANIFEST.in exclusion
+    # bypass on macOS APFS/HFS+ due to NFC/NFD Unicode normalization mismatch,
+    # which could silently pack maintainer-excluded files into a published
+    # sdist. We build with hatchling (not setuptools), but setuptools is a
+    # transitive dep in most resolved environments and our release builds
+    # happen on macOS APFS. Pin to the fixed version.
+    "setuptools>=83.0.0",
 ]
 http = [
     "uvicorn>=0.30.0",
