@@ -60,8 +60,20 @@ ENTRY_KINDS = frozenset(
         "event_create",
         "decision_create",
         "correction_create",
+        # v0.15.0, ADR-0001: signed human annotations pinned to spans
+        # of agent events. Distinct kind so verifiers can filter human
+        # interventions from agent writes without reparsing payloads.
+        "annotation_create",
     }
 )
+
+# v0.15.0 pin_annotation (ADR-0001) — domain-separation string that
+# gets baked into every annotation leaf's canonical payload. Ensures
+# an annotation leaf and an event leaf with otherwise identical
+# fields hash to different roots, so a verifier cannot be tricked
+# into accepting an event as an annotation (or vice versa) via
+# cross-type replay.
+DOMAIN_ANNOTATION: str = "world-model-mcp/transparency-log/annotation/v1"
 
 
 # ---------------------------------------------------------------------------

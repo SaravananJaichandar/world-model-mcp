@@ -625,14 +625,28 @@ class KnowledgeGraph:
         rationale: str,
         annotation_type: str,
     ) -> str:
-        """Persist a pin_annotation row and return its id.
+        """Persist a pin_annotation row, chain-hash it into the audit log,
+        and return its id.
 
-        Day 2 scope per ADR-0001: storage only. epoch_id and signature
-        stay NULL until Day 3+ wires the annotation into the Merkle
-        chain epoch-close path with the distinct DOMAIN_ANNOTATION
-        prefix. Callers should treat the returned annotation_id as the
-        stable handle used for future prove_annotation_inclusion calls.
+        Day 3 (ADR-0001) closes the loop: after the row commits to
+        annotations.db, we emit a `kind="annotation_create"` entry to
+        the tamper-evident log with a domain-separated payload. The
+        payload embeds DOMAIN_ANNOTATION so its leaf hash cannot
+        collide with any event/decision/fact leaf, defeating cross-type
+        replay. epoch_id + signature stay NULL on the annotations row
+        itself; the signed inclusion proof lives in the tamper-evident
+        log (Merkle root + signed epoch) and gets exported by
+        prove_annotation_inclusion once the epoch closes.
+
+        Rationale text is NOT included verbatim in the log payload —
+        rationale is a free-text field that may carry PII, matching
+        the "excluding volatile server-side timestamps and free-text
+        fields" rule that facts + events already follow. A SHA-256 of
+        the UTF-8 rationale bytes IS included so any post-hoc
+        modification of the rationale text in annotations.db breaks
+        chain verification.
         """
+        import hashlib as _hashlib
         import uuid as _uuid
 
         annotation_id = str(_uuid.uuid4())
@@ -653,6 +667,24 @@ class KnowledgeGraph:
                 ),
             )
             await db.commit()
+
+        from . import tamper_evident as _te
+
+        rationale_hash = _hashlib.sha256(rationale.encode("utf-8")).hexdigest()
+        await self._maybe_audit_write(
+            "annotation_create",
+            annotation_id,
+            {
+                "domain": _te.DOMAIN_ANNOTATION,
+                "id": annotation_id,
+                "session_id": session_id,
+                "event_range_start": event_range_start,
+                "event_range_end": event_range_end,
+                "author": author,
+                "annotation_type": annotation_type,
+                "rationale_hash": "sha256:" + rationale_hash,
+            },
+        )
         return annotation_id
 
     # ============================================================================
