@@ -682,6 +682,160 @@ async def get_inclusion_proof(db: Any, row_id: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# v0.15.0 pin_annotation (ADR-0001 §4) — offline verifier extensions
+# ---------------------------------------------------------------------------
+
+
+def reconstruct_annotation_payload(annotation_row: dict) -> dict:
+    """Rebuild the canonical payload the log locked in for an annotation.
+
+    `annotation_row` must be the row content read from annotations.db
+    (id + session_id + event_range_start + event_range_end + author +
+    rationale + annotation_type). This function is a PURE function of
+    that row content — no DB access, no side effects — so it can be
+    used offline against a signed dump.
+
+    The rationale text is hashed here, matching what the writer did on
+    insert, so the reconstructed payload matches byte-for-byte what the
+    audit chain saw. If the annotations.db row has been tampered with
+    post-write, this reconstruction yields a payload whose row_hash no
+    longer matches the log's stored row_hash — which is precisely the
+    tamper-detection signal downstream verifiers check.
+    """
+    rationale_bytes = annotation_row["rationale"].encode("utf-8")
+    rationale_hash = "sha256:" + hashlib.sha256(rationale_bytes).hexdigest()
+    return {
+        "domain": DOMAIN_ANNOTATION,
+        "id": annotation_row["id"],
+        "session_id": annotation_row["session_id"],
+        "event_range_start": annotation_row["event_range_start"],
+        "event_range_end": annotation_row["event_range_end"],
+        "author": annotation_row["author"],
+        "annotation_type": annotation_row["annotation_type"],
+        "rationale_hash": rationale_hash,
+    }
+
+
+async def _verify_annotation_span(
+    db: Any,
+    event_range_start: str,
+    event_range_end: str,
+    annotation_seq: int,
+) -> dict:
+    """Verify that both event range endpoints exist in the tamper log
+    with seq <= annotation_seq.
+
+    ADR-0001 §4.2: 'the verifier checks that both event_ids exist in
+    the same or an earlier epoch than the annotation. An annotation
+    attached to a future event is rejected.' Since epoch numbers are
+    monotone in seq, seq comparison is equivalent to epoch comparison
+    and additionally works before the annotation's epoch has closed.
+
+    Returns a verdict object with per-endpoint status. The caller
+    surfaces this to human auditors; a top-level 'consistent' verdict
+    is emitted only when both endpoints resolve and precede or equal
+    the annotation.
+    """
+    start_entry = await _find_entry_by_row_id(db, event_range_start)
+    end_entry = await _find_entry_by_row_id(db, event_range_end)
+
+    result: dict = {
+        "annotation_seq": annotation_seq,
+        "event_range_start": event_range_start,
+        "event_range_end": event_range_end,
+        "start_seq": start_entry["seq"] if start_entry else None,
+        "end_seq": end_entry["seq"] if end_entry else None,
+        "start_verified": False,
+        "end_verified": False,
+        "verdict": "unknown",
+    }
+
+    if start_entry is None:
+        result["verdict"] = "event_range_start_not_in_log"
+        return result
+    if end_entry is None:
+        result["verdict"] = "event_range_end_not_in_log"
+        return result
+    if start_entry["seq"] > annotation_seq:
+        result["verdict"] = "event_range_start_after_annotation"
+        return result
+    if end_entry["seq"] > annotation_seq:
+        result["verdict"] = "event_range_end_after_annotation"
+        return result
+
+    result["start_verified"] = True
+    result["end_verified"] = True
+    result["verdict"] = "consistent"
+    return result
+
+
+async def prove_annotation_inclusion(
+    db: Any,
+    annotation_id: str,
+    annotation_row: dict,
+) -> dict:
+    """Offline-verifiable bundle proving a pinned annotation was
+    included in a signed epoch AND its rationale text has not been
+    tampered with AND its event span is chronologically consistent.
+
+    Extends get_inclusion_proof with three annotation-specific checks
+    per ADR-0001 §4:
+
+      1. Kind assertion: the log entry for `annotation_id` must have
+         kind='annotation_create'. Rejects the (accidental or
+         adversarial) case of passing an event_id or fact_id where an
+         annotation_id was expected.
+      2. Row hash tamper detection: reconstruct the canonical payload
+         from `annotation_row` (the current annotations.db content)
+         and verify the recomputed row_hash matches the row_hash the
+         audit chain locked in. Any post-hoc mutation of the
+         annotations row — rationale rewrite, author swap, range
+         retarget — fails this check.
+      3. Span consistency: both endpoints of the annotated event
+         range must exist in the tamper log at or before the
+         annotation's seq. An annotation cannot be back-dated to a
+         span of not-yet-logged events.
+
+    Raises ValueError if the annotation entry is not in a closed epoch
+    yet, matching get_inclusion_proof's contract. The span consistency
+    check runs regardless of whether the annotation's epoch is closed
+    — it only depends on seq ordering — and is included in the
+    returned bundle even when inclusion succeeds.
+    """
+    bundle = await get_inclusion_proof(db, annotation_id)
+
+    if bundle["entry_kind"] != "annotation_create":
+        raise ValueError(
+            f"row_id {annotation_id!r} exists in the tamper log but its "
+            f"kind is {bundle['entry_kind']!r}, not 'annotation_create'. "
+            "Not a pinned annotation."
+        )
+
+    reconstructed = reconstruct_annotation_payload(annotation_row)
+    recomputed_row_hash = row_hash(reconstructed)
+    if recomputed_row_hash != bundle["row_hash"]:
+        raise ValueError(
+            f"annotation {annotation_id!r} row content does not match the "
+            "row_hash the audit chain locked in — the annotations.db row "
+            "has been mutated since it was signed. Recomputed "
+            f"{recomputed_row_hash} vs. logged {bundle['row_hash']}."
+        )
+
+    span = await _verify_annotation_span(
+        db,
+        event_range_start=annotation_row["event_range_start"],
+        event_range_end=annotation_row["event_range_end"],
+        annotation_seq=bundle["entry_seq"],
+    )
+
+    return {
+        **bundle,
+        "reconstructed_payload": reconstructed,
+        "span_consistency": span,
+    }
+
+
 async def get_audit_log_head(db: Any) -> dict:
     """
     Return the current audit-log head + full closed-epoch chain, without a

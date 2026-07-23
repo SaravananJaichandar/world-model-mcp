@@ -687,6 +687,62 @@ class KnowledgeGraph:
         )
         return annotation_id
 
+    async def prove_annotation_inclusion(self, annotation_id: str) -> dict:
+        """Two-DB verifier orchestration for a pinned annotation
+        (v0.15.0, ADR-0001 §4).
+
+        Fetches the annotation row from annotations.db, opens the
+        audit chain, and delegates to
+        `tamper_evident.prove_annotation_inclusion` which validates
+        kind, tamper-detects via row_hash reconstruction, and runs
+        the span-consistency check.
+
+        Raises ValueError with a clear message if:
+          - the audit chain is disabled (no proof possible)
+          - the annotation_id does not exist in annotations.db
+          - the annotation exists but is not yet sealed in a closed
+            epoch (auditor retries after next epoch close)
+          - the annotation entry in the log is not kind='annotation_create'
+          - the annotations.db row content has been tampered post-write
+
+        Returns the bundle the offline verifier can distribute or
+        publish.
+        """
+        if not self.tamper_evident_enabled:
+            raise ValueError(
+                "audit chain is disabled — set WORLD_MODEL_AUDIT_LOG=1 "
+                "to enable tamper-evident proofs"
+            )
+
+        async with aiosqlite.connect(self.annotations_db) as adb:
+            cursor = await adb.execute(
+                "SELECT id, session_id, event_range_start, "
+                "event_range_end, author, rationale, annotation_type "
+                "FROM annotations WHERE id = ?",
+                (annotation_id,),
+            )
+            row = await cursor.fetchone()
+        if row is None:
+            raise ValueError(
+                f"annotation not found in annotations.db: {annotation_id!r}"
+            )
+        annotation_row = {
+            "id": row[0],
+            "session_id": row[1],
+            "event_range_start": row[2],
+            "event_range_end": row[3],
+            "author": row[4],
+            "rationale": row[5],
+            "annotation_type": row[6],
+        }
+
+        from . import tamper_evident as _te
+
+        async with aiosqlite.connect(self.audit_db) as db:
+            return await _te.prove_annotation_inclusion(
+                db, annotation_id, annotation_row
+            )
+
     # ============================================================================
     # Entity Operations
     # ============================================================================
