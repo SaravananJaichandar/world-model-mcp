@@ -77,6 +77,7 @@ openai = [
 
 [project.scripts]
 world-model = "world_model_server.cli:main"
+etch-verify = "world_model_server.etch_verify:main"
 
 [build-system]
 requires = ["hatchling"]
