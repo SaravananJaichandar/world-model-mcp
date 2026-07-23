@@ -95,6 +95,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # The PyPI Trusted Publisher registered for world-model-mcp names
+    # this environment. Both sides must match exactly or PyPI refuses
+    # the OIDC exchange with "invalid-publisher: environment MISSING".
+    # See PyPI project → settings → publishing.
+    environment:
+      name: pypi
+
     # OIDC token permission is required for BOTH:
     #   - PyPI Trusted Publishing (the token PyPI receives is verified
     #     against the Trusted Publisher rule configured on the project).
