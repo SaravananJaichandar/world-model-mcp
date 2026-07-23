@@ -43,16 +43,23 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      # pypa/gh-action-pip-audit resolves the pyproject dependency set
-      # (including optional extras) and audits against OSV. Exit codes:
-      # 0 = clean, 1 = vulnerable. No silent-suppression mode.
+      # Install the package with every optional extra pytest.yml installs
+      # so pip-audit sees the same resolved dependency set our tests
+      # execute against. `local: true` in the next step audits that
+      # environment directly (this is the pip-audit pattern for
+      # pyproject-driven projects, not the `inputs:` requirements-file
+      # pattern).
+      - name: Install package + all optional extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,http,hermes,continue,openai]"
+
+      # pypa/gh-action-pip-audit against the installed environment.
+      # Exit codes: 0 = clean, 1 = vulnerable. Hard gate.
       - name: pip-audit
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
-          inputs: pyproject.toml
-          # Match the extras the pytest workflow installs so we audit the
-          # actual dependency surface the tests execute against.
-          extra-args: --disable-pip
+          local: true
 
   gitleaks:
     name: gitleaks (secret scanning)
