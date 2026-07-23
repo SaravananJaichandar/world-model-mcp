@@ -1,5 +1,39 @@
 # World Model MCP - Release Notes
 
+## v0.15.1 (July 2026)
+
+`etch-verify` offline reference verifier + dump-manifest export. Ships the CLI ADR-0001 §5 e2e names by tightening the follow-up gap flagged in the v0.15.0 notes.
+
+### What ships
+
+- **`audit_dump.export_audit_dump(kg)` + `export_audit_dump_to_file(kg, path)`.** Produces a self-contained JSON manifest v1 an offline auditor can verify without live DB access. Contains: `manifest_version` + `generated_at` + `world_model_mcp_version` + `genesis_hash` + `epoch_genesis_root` + `public_keys` (Ed25519 + SLH-DSA, base64 Raw) + full `tamper_evident_log` in seq order + all closed `epochs` with parsed signature envelopes + `source_rows.annotations` + `source_rows.events`. File export is sorted-key + fixed-indent so two dumps of identical state produce byte-identical files (minus the timestamp) — auditors hash the manifest as artifact of record.
+- **`etch-verify` CLI.** New console script registered via `pyproject.toml [project.scripts]`. Runs four verification passes in short-circuit order:
+  1. Chain integrity — every `entry_hash` recomputes from stored fields, `prev_hash` chains back to `GENESIS_HASH`.
+  2. Epoch chain — every `prev_epoch_root` links to the previous `merkle_root` back to `EPOCH_GENESIS_ROOT`.
+  3. Hybrid signatures — every closed epoch's envelope verifies under the manifest-declared Ed25519 + SLH-DSA public keys via `hybrid_signer.verify_hybrid`.
+  4. Content lock — every `source_rows.annotations` row reconstructs to the exact `row_hash` the log locked in (via `reconstruct_annotation_payload`); same for events. Any post-hoc rationale rewrite / author swap / range retarget / event mutation fails this check.
+
+  Usage: `etch-verify <manifest.json> [--json]`. Exit codes: `0` clean, `1` at least one check failed, `2` manifest unreadable / malformed. Human output prints `[PASS]/[FAIL]` per check + a counts row + a final `VERDICT`. `--json` emits a machine-readable report with a SHA-256 of the exact bytes read so auditors can chain the manifest hash into their own scanned-artifact ledger.
+- **Clean stdout for pipe consumers.** `import oqs` prints a "liboqs-python faulthandler is disabled" banner to stdout on first-import. The CLI's crypto import chain now runs inside a `contextlib.redirect_stdout(io.StringIO())` guard so `etch-verify --json | jq` gets unpolluted input.
+
+### Test surface
+
+Ships 34 new tests across three files:
+
+- **Dump export (10):** manifest top-level shape, genesis constants match module, all log entries captured in seq order, closed epoch with parsed envelope, public keys round-trip to signer bytes, both source-row shapes, JSON round-trip, file-export determinism, audit-disabled raises actionable ValueError.
+- **CLI + verifier unit (18):** happy path with expected counts, chain-integrity fails on edited `entry_hash` or `prev_hash`, epoch-chain fails on edited `prev_epoch_root`, epoch-signature fails on swapped public key, annotation content lock fails on parametrized field mutations (rationale, author, event_range_start/end, annotation_type), missing log entry rejected, event content lock fails on tool_name mutation, bad manifest version rejected, CLI exit 0 on clean + VERDICT: OK, `--json` emits parseable payload with counts + `manifest_sha256`, CLI exit 1 on tampered, CLI exit 2 on missing/malformed JSON.
+- **Subprocess E2E (6):** shells out via `python -m world_model_server.etch_verify` — happy path exit 0 + VERDICT: OK across all four PASS lines, `--json` parses cleanly from a real subprocess pipe, edited rationale → exit 1, swapped public key → exit 1, missing file → exit 2 + "cannot read" on stderr, malformed JSON → exit 2 + "not valid JSON" on stderr.
+
+The mid-run intervention `test_pin_annotation_e2e.py` now ALSO shells out to the etch-verify CLI subprocess against a real dump on disk, closing the "run offline etch-verify CLI against the dump" line ADR-0001 §5 e2e opened. Compliance-facing step is now literally executable, not a claim about in-process wrappers.
+
+Repo total: 1194 tests pass, 71.01% coverage. All three CI gates (pytest, mcp-conformance, security) green through the Day 1-3 sequence.
+
+### Contract preservation
+
+- No changes to `pin_annotation`, `annotations` table, chain-integration behavior, or the audit-log opt-in mechanism.
+- Manifest schema is `manifest_version: "1"`. Future schema changes bump this and the verifier's `expected version` check gates strictly.
+- `source_rows` covers annotations + events (the two write paths verified in v0.15.0). Facts, decisions, constraints, corrections chain into the same log — chain-only verification passes over them today; adding `source_rows.<kind>` sections for full content lock is a follow-up.
+
 ## v0.15.0 (July 2026)
 
 `pin_annotation`: signed human interventions on the tamper-evident audit chain (ADR-0001).
