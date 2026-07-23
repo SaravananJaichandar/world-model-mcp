@@ -4,7 +4,7 @@
 
 **World Model MCP is the memory-graph infrastructure that closes that gap.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, adversarially verifies retrievals via an independent Coach LLM, and runs across Claude Code, Cursor, Codex, pi, OpenClaw, Hermes Agent, Continue, GitHub Copilot Chat, Cline, and Windsurf.
 
-> **Latest: v0.14.1** — cross-platform determinism fix in confidence decay + first-party adapter docs for [Mesh-LLM](docs/adapters/mesh-llm.md), [BUZZ](docs/adapters/buzz.md) (verified end-to-end with a 5-agent handoff integration test), and [Goose](docs/adapters/goose.md). New pytest CI workflow with a 69% coverage floor. See [full version history](#full-version-history) below.
+> **Latest: v0.15.1** — `etch-verify` offline reference verifier CLI + `audit_dump` dump-manifest export. An auditor can now run `etch-verify dump.json` against a signed audit-chain dump and get exit 0 + a PASS report across chain integrity, epoch signatures, and content lock. Ships on top of v0.15.0 (`pin_annotation` MCP tool + chain integration + `prove_annotation_inclusion` verifier). See [full version history](#full-version-history) below.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -86,6 +86,30 @@ All three point at the same `.claude/world-model/` DB path, so installing multip
 <details id="full-version-history">
 <summary><strong>Full version history (v0.7.0 onward)</strong></summary>
 
+## What's new in v0.15.1
+
+- **`etch-verify` offline reference verifier CLI.** New console script (installed via `pip install world-model-mcp` and registered in `pyproject.toml [project.scripts]`) that reads a signed audit-chain dump manifest and runs four verification passes in short-circuit order:
+  1. **Chain integrity** — every `entry_hash` recomputes from stored fields and `prev_hash` chains back to `GENESIS_HASH`.
+  2. **Epoch chain** — every `prev_epoch_root` links to the previous `merkle_root` back to `EPOCH_GENESIS_ROOT`.
+  3. **Hybrid signatures** — every closed epoch's envelope verifies under the manifest-declared Ed25519 + SLH-DSA-SHA2-128f public keys via `hybrid_signer.verify_hybrid`.
+  4. **Content lock** — every `source_rows.annotations` and `source_rows.events` row reconstructs to the exact `row_hash` the log locked in. Any post-hoc rationale rewrite, author swap, range retarget, or event mutation fails this check.
+
+  Usage: `etch-verify <manifest.json> [--json]`. Exit codes `0` clean / `1` at least one failed / `2` unreadable. `--json` emits a SHA-256 of the exact bytes read so auditors chain the manifest hash into their own scanned-artifact ledger.
+- **`audit_dump.export_audit_dump(kg)` + `export_audit_dump_to_file(kg, path)`.** Self-contained JSON manifest v1 an offline auditor can verify without live DB access. Contains: full `tamper_evident_log` in seq order, all closed `epochs` with parsed signature envelopes, both hybrid public keys base64-Raw, and `source_rows` for annotations + events. File export is sorted-key + fixed-indent so two dumps of identical state produce byte-identical files — auditors hash the manifest as artifact of record.
+- **Clean stdout for pipe consumers.** `import oqs` prints a "liboqs-python faulthandler is disabled" banner to stdout on first-import. The CLI's crypto import chain now runs inside a `contextlib.redirect_stdout(io.StringIO())` guard so `etch-verify --json | jq` gets unpolluted input.
+- **Test surface (+34):** `tests/test_audit_dump_export.py` (10), `tests/test_etch_verify.py` (18), `tests/test_etch_verify_subprocess_e2e.py` (6). The `test_pin_annotation_e2e.py` mid-run intervention workflow now ALSO shells out to the etch-verify CLI subprocess against a real dump on disk, closing the compliance-facing "run offline etch-verify CLI against the dump" line ADR-0001 §5 e2e opened.
+- **Repo total: 1194 tests pass, 71.01% coverage.** All three CI gates (pytest, mcp-conformance, security) green through the three-commit sequence: `049a107` → `0cf9ba0` → `67e6a03`.
+
+## What's new in v0.15.0
+
+`pin_annotation`: signed human interventions on the tamper-evident audit chain (ADR-0001).
+
+- **`pin_annotation` MCP tool.** Attach a signed human note, override rationale, or intervention record to a span of agent events. Rationale is capped at 8 KB and lives in a dedicated `annotations.db` with a CHECK constraint on `annotation_type` (`human_intervention` / `human_note` / `override_justification`).
+- **Chain integration with domain separation.** Annotations chain into the same tamper-evident log as agent writes with `kind="annotation_create"`. Leaves embed the `DOMAIN_ANNOTATION = "world-model-mcp/transparency-log/annotation/v1"` string so annotation leaves and event leaves hash to different values even when other fields collide — cross-type replay defense.
+- **Rationale hash tamper detection.** The tamper-log entry carries a SHA-256 of the rationale bytes but not the rationale text itself (PII discipline, matching the existing fact/event pattern). Modifying rationale in `annotations.db` post-write means a recomputed hash no longer matches the log's stored one — verifier detects it.
+- **Offline verifier: `prove_annotation_inclusion`.** Bundle contains the Merkle inclusion proof, the reconstructed payload, and a `span_consistency` verdict. Kind assertion rejects passing a non-annotation `row_id` through the annotation verifier path. Span check confirms both endpoints of the annotated event range exist in the tamper log at seq ≤ annotation's seq — an annotation cannot be back-dated to a span of not-yet-logged events.
+- **97 new tests across five files:** schema (23) + MCP tool (17) + chain integration (22) + offline verifier (19) + integration/security/E2E (16). ADR-0001 §1-5 fully attested. See `docs/decisions/0001-pin-annotation-mcp-tool.md` for the full design record.
+
 ## What's new in v0.14.1
 
 - **Cross-platform determinism fix in confidence decay.** `world_model_server.decay.compute_decayed_confidence()` now quantizes its output to 6 decimals at the function boundary. Previously the raw IEEE 754 multiplication of `confidence * (0.5 ** half_lives)` produced platform-dependent last-bit drift on sub-nanosecond half-life inputs (macOS often landed on the input value exactly; Linux CI landed ~1e-8 below). Confidence values are never consumed at more than a few decimals of precision anywhere in the system (thresholds like 0.8 and 0.6 are exact literals), so 6-decimal quantization is a semantic no-op that eliminates the drift. A new test file `tests/test_decay_platform_stable.py` (8 tests) locks in the quantization contract, the platform-stability property across sub-second timing variation, and the physical decay semantics (one half-life halves confidence, clamps at 0.0 and 1.0 still fire).
@@ -94,7 +118,7 @@ All three point at the same `.claude/world-model/` DB path, so installing multip
 - **First pytest CI workflow (`.github/workflows/pytest.yml`).** The 900+ test suite in `tests/` was previously not run in CI (only `cla.yml` and `contradictions-benchmark.yml` ran on PR). It now runs on push-to-main, PR, and workflow_dispatch, with a 15-minute timeout and concurrency cancellation on the same ref. Coverage floor: 69% via `--cov-fail-under=69`, matching the honest baseline measured on 2026-07-22 (69.74% across `world_model_server`). The floor ratchets up, never down.
 - **New dev dependencies:** `pytest-cov`, `hypothesis`, `pytest-timeout`, `pytest-randomly`. Order-randomization is on by default; a 5-minute per-test default timeout catches hangs.
 - **Adapter index README (`docs/adapters/README.md`).** Entry point for `docs/adapters/`, lists all three current adapters with verification status, documents the sovereign-stack composition, and points contributors at the validation contract.
-- **First ADR (`docs/decisions/0001-pin-annotation-mcp-tool.md`).** Design record for the `pin_annotation` MCP tool arriving in the next minor release, covering data model, MCP tool signature, chain integration, offline verifier updates, OSS-vs-hosted split, and the mandatory 5-test-file surface (unit / integration / security / e2e / property-based).
+- **First ADR (`docs/decisions/0001-pin-annotation-mcp-tool.md`).** Design record for the `pin_annotation` MCP tool. Shipped in v0.15.0; the ADR covers data model, MCP tool signature, chain integration, offline verifier updates, OSS-vs-hosted split, and the mandatory 5-test-file surface (unit / integration / security / e2e / property-based).
 
 ## What's new in v0.14.0
 
