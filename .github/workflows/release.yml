@@ -1,0 +1,127 @@
+name: release
+
+# Day 8-14 rollout of the P0 testing stack per the deep-research report
+# (memory: project_testing_stack_p0_picks_2026-07-23). Publishes tagged
+# releases to PyPI via Trusted Publishing (no stored API tokens) and
+# generates Sigstore attestations as the forensic proof-of-provenance
+# per the Dec 2024 PyPI Ultralytics post-mortem:
+#
+#   https://blog.pypi.org/posts/2024-12-11-ultralytics-attack-analysis/
+#
+# In that attack, wave-1 malicious releases carried valid Sigstore
+# transparency-log entries (proving the legitimate workflow was
+# compromised); wave-2 releases lacked attestations, revealing the
+# bypass path via an unrevoked legacy PyPI API token. Trusted
+# Publishing + attestations closes both attack surfaces:
+#   - No stored token to steal (OIDC exchanged per-run against PyPI).
+#   - Every release is signed by the specific workflow that produced
+#     it, so a compromise of any other release path is externally
+#     detectable.
+#
+# Prerequisites (one-time repo setup):
+#   1. Create a Trusted Publisher on PyPI:
+#      https://pypi.org/manage/project/world-model-mcp/settings/publishing/
+#      Owner: SaravananJaichandar
+#      Repository name: world-model-mcp
+#      Workflow filename: release.yml         <-- MUST match this file
+#      Environment name: (leave blank for now; see comment below)
+#   2. Revoke any pre-existing PyPI API tokens for this project.
+#      https://pypi.org/manage/account/token/
+#
+# Optional hardening (recommended for later):
+#   Configure a "pypi" environment in
+#   Settings -> Environments -> New environment,
+#   with required reviewers or a wait timer, then:
+#   (a) add `environment: name: pypi` under the publish-pypi job,
+#   (b) also select "pypi" as the environment name on the PyPI
+#       Trusted Publisher form. Both sides must match exactly.
+#
+# Trigger: any tag matching v* (e.g. v0.15.0, v0.14.2).
+# Also supports manual dispatch for testing the workflow shape without
+# creating a real tag.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Top-level default: read-only for most jobs.
+# The publish job overrides with id-token: write for OIDC.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build sdist + wheel
+        run: |
+          python -m build
+
+      - name: Sanity check the built artifacts
+        # twine check catches malformed long-description rendering
+        # (would silently render as raw text on the PyPI page) plus
+        # basic archive integrity. Cheap gate.
+        run: |
+          pip install twine
+          python -m twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+  publish-pypi:
+    name: Publish to PyPI with Sigstore attestations
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # OIDC token permission is required for BOTH:
+    #   - PyPI Trusted Publishing (the token PyPI receives is verified
+    #     against the Trusted Publisher rule configured on the project).
+    #   - Sigstore attestation generation (the token is used to sign
+    #     the artifacts under the workflow's identity so the Sigstore
+    #     transparency log entry names this exact repo + workflow).
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download built dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI (Trusted Publishing + Sigstore attestations)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # Trusted Publishing is the default authentication method
+          # when id-token: write is granted and no token is supplied.
+          # Attestations = true tells the action to generate + upload
+          # Sigstore attestations alongside the release. This is the
+          # bit that closes the Ultralytics-class forgery detection
+          # gap: any release that shows up on PyPI without a matching
+          # attestation was NOT produced by this workflow.
+          attestations: true
+          verbose: true
