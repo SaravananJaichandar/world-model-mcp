@@ -1,5 +1,39 @@
 # World Model MCP - Release Notes
 
+## v0.15.0 (July 2026)
+
+`pin_annotation`: signed human interventions on the tamper-evident audit chain (ADR-0001).
+
+### What ships
+
+- **`pin_annotation` MCP tool.** Attach a signed human note, override rationale, or intervention record to a span of agent events. Rationale is capped at 8 KB and lives in a dedicated `annotations.db` with a CHECK constraint on `annotation_type` (`human_intervention` / `human_note` / `override_justification`).
+- **Chain integration with domain separation.** Annotations chain into the same tamper-evident log as agent writes with `kind="annotation_create"`. Leaves embed the `DOMAIN_ANNOTATION = "world-model-mcp/transparency-log/annotation/v1"` string so annotation leaves and event leaves hash to different values even when other fields collide — cross-type replay defense.
+- **Rationale hash tamper detection.** The tamper-log entry carries a SHA-256 of the rationale bytes but not the rationale text itself (PII discipline, matching the existing fact/event pattern). Modifying rationale in `annotations.db` post-write means a recomputed hash no longer matches the log's stored one — verifier detects it.
+- **Offline verifier: `prove_annotation_inclusion`.** Bundle contains the Merkle inclusion proof, the reconstructed payload, and a `span_consistency` verdict. Kind assertion rejects passing a non-annotation `row_id` through the annotation verifier path. Span check confirms both endpoints of the annotated event range exist in the tamper log at seq ≤ annotation's seq — an annotation cannot be back-dated to a span of not-yet-logged events.
+
+### Test surface (ADR-0001 §5)
+
+Ships with 97 new tests across five files:
+
+- **Schema (23):** `annotations` table + 4 indexes + CHECK/NOT NULL constraints + regression on existing schemas
+- **MCP tool (17):** happy path, all three valid types accepted, all five required strings reject empty, rationale byte-length limit at 8 KB (with UTF-8 multibyte coverage), no row written when validation fails
+- **Chain integration (22):** entry kind registered, DOMAIN_ANNOTATION exported, one write → one log entry, multiple writes chain sequentially, payload shape verified against the log's stored row_hash, rationale text absent from `audit_db` bytes, domain separation, opt-in respected
+- **Offline verifier (19):** reconstruction is pure + deterministic, kind assertion, tamper detection parametrized over five fields, span-consistency verdicts across all five documented cases, error paths (audit disabled / unknown id / before-epoch-close)
+- **Integration (4) + Security (11) + E2E (1):** round-trip via MCP boundary, multi-annotation-per-epoch, epoch close semantics, chain continuity across epochs, hybrid signature validity, full-field tamper sweep, domain separation, rationale-hash distinctness, filesystem auth boundary, full mid-run intervention workflow through the reference verifier
+
+Repo total: 1160 tests pass, 70.19% coverage. All three CI gates (pytest, mcp-conformance, security) green through the entire five-commit sequence.
+
+### Contract preservation
+
+- Existing `ENTRY_KINDS` unchanged (fact_create / event_create / decision_create / etc.). `annotation_create` is added, not renamed.
+- Existing writers (fact / event / decision / constraint / correction) do NOT gain a `domain` field. Domain separation is scoped to the new annotation kind; adding it to existing kinds would invalidate every existing signed chain.
+- `annotations.db` initializes automatically; adds one row to `get_db_sizes()` (9 → 10 databases). No migration required for existing installs.
+- `_maybe_audit_write` behavior unchanged: no-op when `WORLD_MODEL_AUDIT_LOG` is off, chain-appends when on.
+
+### Explicit follow-up (before v0.16)
+
+- **Dump-manifest export + `etch-verify` CLI.** The E2E test currently runs through the in-process `verify_inclusion_bundle` because no offline CLI ships yet. When the CLI ships, a subprocess-driven E2E stacks on top and the compliance-facing "run offline verifier against the dump" line becomes literally executable. The reference verifier surface being tested today is the same one the CLI will wrap.
+
 ## v0.12.13 (July 2026)
 
 Two follow-ups sourced from engagement threads during the v0.12.12 ship cycle. Additive-only; backward compatible with v0.12.12.
