@@ -22,6 +22,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # liboqs-python's `import oqs` uses ctypes.CDLL to load liboqs.so
+      # and honors LD_LIBRARY_PATH. The runner sets this to Python's
+      # own lib dir; append the ~/_oqs/lib path where we install our
+      # SLH-DSA-enabled build so both pip install AND the pytest step
+      # find it. Setting at job level so every step inherits.
+      LD_LIBRARY_PATH: /home/runner/_oqs/lib:/opt/hostedtoolcache/Python/3.11.15/x64/lib
 
     steps:
       - uses: actions/checkout@v4
@@ -33,26 +40,33 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      # Build liboqs from source. Reasons:
+      # Build liboqs from source and install into `~/_oqs` — the
+      # exact path `liboqs-python` looks for at import time. Reasons:
       #   - liboqs-python's wheel-bundled binary does not ship SLH-DSA
       #     in every build (verified 2026-07-24: 221 enabled mechanisms
       #     including Falcon + MAYO but NOT SLH-DSA under either the
-      #     FIPS 205 or legacy SPHINCS+ name)
+      #     FIPS 205 or legacy SPHINCS+ name).
       #   - Ubuntu 24.04 (noble) does not carry liboqs-dev in its
-      #     default repos as of 2026-07-24 (verified: apt says "unable
-      #     to locate package")
-      # Source build takes ~90s and gives us the full mechanism set
-      # (both SLH-DSA-SHA2-128f and SPHINCS+-SHA2-128f-simple), which
-      # our audit-chain hybrid signer relies on.
-      - name: Build liboqs from source (for SLH-DSA)
+      #     default repos.
+      #   - Installing to /usr/local + `sudo ldconfig` was insufficient
+      #     because the runner sets LD_LIBRARY_PATH scoped to Python's
+      #     lib dir (verified 2026-07-24 log), so liboqs-python's
+      #     ctypes.CDLL never found /usr/local/lib/liboqs.so and fell
+      #     back to its own auto-install of a SLH-DSA-less liboqs at
+      #     ~/_oqs, defeating the build we just ran.
+      # Fix: install directly to ~/_oqs so liboqs-python's own search
+      # picks it up first — no LD_LIBRARY_PATH plumbing required.
+      # Full source build takes ~90s.
+      - name: Build liboqs from source into ~/_oqs (for SLH-DSA)
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build libssl-dev
           git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
-          cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja -DOQS_BUILD_ONLY_LIB=ON
+          cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja \
+            -DOQS_BUILD_ONLY_LIB=ON \
+            -DCMAKE_INSTALL_PREFIX=$HOME/_oqs
           cmake --build /tmp/liboqs/build --parallel
-          sudo cmake --install /tmp/liboqs/build
-          sudo ldconfig
+          cmake --install /tmp/liboqs/build
 
       - name: Install package + all optional extras
         run: |
