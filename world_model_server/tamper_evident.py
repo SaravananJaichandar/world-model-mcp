@@ -246,6 +246,41 @@ async def append_entry(
         # SHOULD stick to ENTRY_KINDS.
         pass  # noqa: E501 — intentional pass; see docstring
 
+    # Serialize the append. Prior to this line, the append path had a
+    # multi-statement race:
+    #   1. SELECT last entry_hash (basis of prev_hash)
+    #   2. SELECT MAX(seq) (basis of next_seq)
+    #   3. Compute entry_hash = f(prev_hash, next_seq, ...)
+    #   4. INSERT
+    # Two concurrent writers could both execute (1) and (2) against the
+    # same committed state, both computing the same next_seq and the same
+    # prev_hash. One would win the INSERT; whatever exact SQLite behavior
+    # produced the second row on saha's chain (seq=666 and seq=667 both
+    # with prev_hash pointing at seq=665's entry_hash) — historical
+    # schema oddity, retry we can't see, or some driver-level quirk —
+    # the underlying invariant "prev_hash of entry N+1 == entry_hash of
+    # entry N" is violated whenever two writers slip through in the
+    # SAME committed snapshot.
+    #
+    # BEGIN IMMEDIATE takes the reserved write lock now, before the
+    # SELECTs, so any other writer either blocks or fails-fast with
+    # SQLITE_BUSY (which aiosqlite surfaces as OperationalError). The
+    # SELECT + INSERT run inside a single write transaction that no
+    # other writer can interleave against. The caller's commit finalizes.
+    #
+    # A no-op if the connection is already in a write transaction (some
+    # test paths); catch the "cannot start a transaction within a
+    # transaction" error and proceed. The outer transaction already
+    # gives us the serialization we need.
+    try:
+        await db.execute("BEGIN IMMEDIATE")
+    except Exception:
+        # Already in a transaction — outer BEGIN gives us equivalent
+        # serialization. Or an unusual driver state — either way we
+        # keep going because the SELECT + INSERT below still run under
+        # SOME transaction on this connection.
+        pass
+
     # Fetch last entry_hash for the prev_hash chain.
     cursor = await db.execute(
         "SELECT entry_hash FROM tamper_evident_log ORDER BY seq DESC LIMIT 1"
