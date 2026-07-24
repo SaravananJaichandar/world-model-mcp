@@ -63,11 +63,40 @@ import oqs
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-# liboqs algorithm name for SPHINCS+-SHA2-128f-simple (the round-3-finalized
-# variant that PQClean ships and pqclean npm reads). pyspx hardcodes the
-# deprecated `robust` variant, which is why we swapped away from it before
-# ship — the `simple` variant is what all modern implementations use.
-_SLH_DSA_ALG = "SPHINCS+-SHA2-128f-simple"
+# liboqs algorithm name for the FIPS 205 SLH-DSA parameter set we sign
+# with. Different liboqs versions use different names for the SAME
+# underlying primitive:
+#
+#   liboqs >= 0.14 (post FIPS 205, Aug 2024): "SLH-DSA-SHA2-128f"
+#   liboqs <  0.14                          : "SPHINCS+-SHA2-128f-simple"
+#
+# Existing signatures under either name verify under the other because
+# the wire format is identical — only the mechanism identifier changed
+# in liboqs when SPHINCS+ was standardized as SLH-DSA. We resolve at
+# import time by probing which name this liboqs build enables, so the
+# code runs against both older prod boxes and newer CI runners without
+# per-environment forks.
+_SLH_DSA_ALG_FIPS205 = "SLH-DSA-SHA2-128f"
+_SLH_DSA_ALG_LEGACY = "SPHINCS+-SHA2-128f-simple"
+
+
+def _resolve_slh_dsa_alg() -> str:
+    """Return the mechanism name this liboqs installation accepts."""
+    enabled = set(oqs.get_enabled_sig_mechanisms())
+    if _SLH_DSA_ALG_FIPS205 in enabled:
+        return _SLH_DSA_ALG_FIPS205
+    if _SLH_DSA_ALG_LEGACY in enabled:
+        return _SLH_DSA_ALG_LEGACY
+    raise RuntimeError(
+        f"Neither {_SLH_DSA_ALG_FIPS205!r} nor "
+        f"{_SLH_DSA_ALG_LEGACY!r} is enabled in this liboqs build. "
+        "Upgrade liboqs to 0.14+ (or install a build with SLH-DSA "
+        "support). Enabled: "
+        f"{sorted(enabled)[:5]}... ({len(enabled)} total)"
+    )
+
+
+_SLH_DSA_ALG = _resolve_slh_dsa_alg()
 
 # Cached algorithm parameter sizes (queried once from liboqs at import).
 _slh_probe = oqs.Signature(_SLH_DSA_ALG)
