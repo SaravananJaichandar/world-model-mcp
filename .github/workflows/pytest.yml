@@ -33,6 +33,18 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
+      # liboqs-python's wheel-bundled binary does not include SLH-DSA
+      # in every build (verified 2026-07-24 — CI runner had 221 enabled
+      # mechanisms including Falcon and MAYO but NOT SLH-DSA under
+      # either the FIPS 205 name or the legacy SPHINCS+ name). Install
+      # liboqs-dev at the OS level so liboqs-python links against the
+      # full system library with SLH-DSA-SHA2-128f enabled — the
+      # primitive our audit-chain hybrid signer depends on.
+      - name: Install liboqs system library (for SLH-DSA)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y liboqs-dev
+
       - name: Install package + all optional extras
         run: |
           python -m pip install --upgrade pip
