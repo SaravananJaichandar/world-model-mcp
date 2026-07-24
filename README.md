@@ -4,7 +4,7 @@
 
 **World Model MCP is the memory-graph infrastructure that closes that gap.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, adversarially verifies retrievals via an independent Coach LLM, and runs across Claude Code, Cursor, Codex, pi, OpenClaw, Hermes Agent, Continue, GitHub Copilot Chat, Cline, and Windsurf.
 
-> **Latest: v0.15.3** — Compliance-semantic fix on `verify_slh_dsa`. v0.15.2 made this function return `False` when SLH-DSA was unavailable in the local liboqs build, which silently reclassified "cannot verify in this environment" as "verified as tampered" — an auditor running `etch-verify` on a laptop without SLH-DSA would have seen a chain-integrity FAIL and reasonably concluded tampering. Chain would be fine; tool would be broken. v0.15.3 makes `verify_slh_dsa` raise `RuntimeError` when unavailable, propagates through `verify_hybrid`, and `etch-verify` catches it as a distinct `epoch_signatures_unverifiable` check with the environment error in the detail column. `chain_integrity` and `epoch_signatures` are now reserved for real tamper detection. Recommended upgrade for any v0.15.2 install that may run signature verification on an environment without proper liboqs. Ships on top of v0.15.2 (concurrent-append race fix), v0.15.1 (`etch-verify` CLI + `audit_dump`), and v0.15.0 (`pin_annotation`). See [full version history](#full-version-history) below.
+> **Latest: v0.15.4** — Streaming audit-dump exporter. Prod 2026-07-24 verified that a 760MB `audit.db` reliably OOM-killed the in-memory `export_audit_dump_to_file` on a 2GB host. New `export_audit_dump_to_file_streaming(kg, out_path)` writes the manifest to disk one DB row at a time via async cursors, dropping memory footprint from O(chain size) to O(single row). Byte-identical output, so an auditor hashing the manifest as an artifact of record gets the same sha256 regardless of which exporter the operator used. Recommended upgrade for any deployment whose scheduled offline verification is against audit chains large enough to strain the host. Ships on top of v0.15.3 (verify_slh_dsa semantic fix), v0.15.2 (concurrent-append race fix), v0.15.1 (`etch-verify` CLI + `audit_dump`), and v0.15.0 (`pin_annotation`). See [full version history](#full-version-history) below.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -85,6 +85,14 @@ All three point at the same `.claude/world-model/` DB path, so installing multip
 
 <details id="full-version-history">
 <summary><strong>Full version history (v0.7.0 onward)</strong></summary>
+
+## What's new in v0.15.4
+
+- **`export_audit_dump_to_file_streaming(kg, out_path)` in `world_model_server.audit_dump`.** Same signature and return value as `export_audit_dump_to_file`, but writes the manifest JSON directly to disk one DB row at a time via async cursors over `tamper_evident_log`, `tamper_evident_epochs`, `annotations.db`, and `events.db`. Memory footprint is O(single row) instead of O(chain). Fixes the OOM path on chains too large for in-memory expansion.
+- **Byte-identical output.** Both exporters produce sort_keys=True 2-space-indent JSON with the same whitespace, comma placement, and escape rules. If an auditor hashes the manifest as an artifact of record (which is exactly what `etch-verify --json`'s `manifest_sha256` field supports), the same chain state hashes to the same value regardless of which exporter the operator used.
+- **7 new tests** locking byte-parity (parsed round-trip AND raw-file comparison), `etch-verify` PASSes on streaming output for single- and multi-epoch chains, memory scaling stays sublinear under `tracemalloc`, empty-chain edge case produces valid parseable JSON, same fail-closed error when audit chain is disabled.
+- **No API changes elsewhere.** `pin_annotation`, chain integrity, `etch-verify` all unchanged. The in-memory `export_audit_dump_to_file` remains available for small chains and existing callers — no forced migration.
+- **Recommendation:** Upgrade any deployment running scheduled offline verification against audit chains large enough to strain host memory. Switch the export call from `export_audit_dump_to_file` to `export_audit_dump_to_file_streaming`. Same signature.
 
 ## What's new in v0.15.3
 

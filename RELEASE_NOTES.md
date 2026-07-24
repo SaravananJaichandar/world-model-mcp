@@ -1,5 +1,41 @@
 # World Model MCP - Release Notes
 
+## v0.15.4 (July 2026)
+
+Streaming audit-dump exporter. Recommended for any deployment whose audit chain has grown large enough to make the in-memory `export_audit_dump_to_file` OOM the host.
+
+### What ships
+
+- **`export_audit_dump_to_file_streaming(kg, out_path)`.** Same signature and return value as `export_audit_dump_to_file`, but writes the manifest JSON directly to disk one DB row at a time. Memory footprint is O(single row) instead of O(full chain). Uses async cursor iteration from `aiosqlite` for the log entries, epochs, annotations, and events tables.
+
+- **Byte-identical output.** Both exporters produce the same sort_keys=True, 2-space-indent JSON. If an auditor hashes the manifest as an artifact of record (which is exactly what `etch-verify --json` supports via its manifest_sha256 field), the same chain hashes to the same value regardless of which exporter the operator used. This byte-parity property is locked by test `test_streaming_raw_bytes_match_in_memory_raw_bytes`.
+
+- **`etch-verify` unchanged.** The verifier operates on the parsed dict, so it accepts either exporter's output equivalently.
+
+### Why
+
+Prod deployment 2026-07-24 hit exactly this wall: a 760MB audit.db reliably OOM-killed the export subprocess on a 2GB droplet running the scheduled offline-verifier attestation loop. The preflight-skip fallback (skip verify for chains over a size cap) is a workaround, not a solution — a compliance product that can't verify its own largest chain is exactly the wrong shape. Streaming closes that gap.
+
+### Test surface (+7)
+
+`tests/test_audit_dump_streaming.py`:
+
+- Byte-parity via parsed-JSON round-trip AND raw-file comparison (two independent tests, both after normalizing the `generated_at` field which legitimately differs between two exports).
+- `etch_verify.verify_manifest` PASSES on streaming output for both single-epoch and multi-epoch chains.
+- Memory scales sublinearly: 5x more events must NOT produce 5x peak memory. Uses `tracemalloc` to catch any future refactor that accidentally materializes the full manifest.
+- Empty-chain edge case produces valid parseable JSON.
+- Same fail-closed guard as `export_audit_dump` when the audit chain is disabled on the KG.
+
+### Contract preservation
+
+- No changes to `pin_annotation`, `etch-verify`, chain integrity, or any other public interface.
+- Manifest schema remains `manifest_version: "1"`.
+- The in-memory `export_audit_dump_to_file` is still available and unchanged for small chains and existing callers.
+
+### Recommended action
+
+If your deployment runs the etch scheduled attestation loop (or any custom periodic offline verification) against audit chains larger than a few hundred MB, upgrade to v0.15.4 and switch your export call from `export_audit_dump_to_file` to `export_audit_dump_to_file_streaming`. Same signature, same output, drops the memory ceiling.
+
 ## v0.15.3 (July 2026)
 
 Compliance-semantic fix on `verify_slh_dsa`. Recommended for any deployment that upgraded to v0.15.2 and may run `etch-verify` (or any downstream signature verification) in an environment without SLH-DSA in the local liboqs build.
