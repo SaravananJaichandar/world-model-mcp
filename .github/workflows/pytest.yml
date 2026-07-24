@@ -33,17 +33,26 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      # liboqs-python's wheel-bundled binary does not include SLH-DSA
-      # in every build (verified 2026-07-24 — CI runner had 221 enabled
-      # mechanisms including Falcon and MAYO but NOT SLH-DSA under
-      # either the FIPS 205 name or the legacy SPHINCS+ name). Install
-      # liboqs-dev at the OS level so liboqs-python links against the
-      # full system library with SLH-DSA-SHA2-128f enabled — the
-      # primitive our audit-chain hybrid signer depends on.
-      - name: Install liboqs system library (for SLH-DSA)
+      # Build liboqs from source. Reasons:
+      #   - liboqs-python's wheel-bundled binary does not ship SLH-DSA
+      #     in every build (verified 2026-07-24: 221 enabled mechanisms
+      #     including Falcon + MAYO but NOT SLH-DSA under either the
+      #     FIPS 205 or legacy SPHINCS+ name)
+      #   - Ubuntu 24.04 (noble) does not carry liboqs-dev in its
+      #     default repos as of 2026-07-24 (verified: apt says "unable
+      #     to locate package")
+      # Source build takes ~90s and gives us the full mechanism set
+      # (both SLH-DSA-SHA2-128f and SPHINCS+-SHA2-128f-simple), which
+      # our audit-chain hybrid signer relies on.
+      - name: Build liboqs from source (for SLH-DSA)
         run: |
           sudo apt-get update
-          sudo apt-get install -y liboqs-dev
+          sudo apt-get install -y cmake ninja-build libssl-dev
+          git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git /tmp/liboqs
+          cmake -S /tmp/liboqs -B /tmp/liboqs/build -GNinja -DOQS_BUILD_ONLY_LIB=ON
+          cmake --build /tmp/liboqs/build --parallel
+          sudo cmake --install /tmp/liboqs/build
+          sudo ldconfig
 
       - name: Install package + all optional extras
         run: |
