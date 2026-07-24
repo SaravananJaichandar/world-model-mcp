@@ -82,7 +82,15 @@ jobs:
         # dev) still enforces the 69% baseline. Both floors ratchet
         # up together.
         run: |
-          floor=$(python -c "from world_model_server.hybrid_signer import SLH_DSA_AVAILABLE; print(69 if SLH_DSA_AVAILABLE else 64)")
+          # Swallow liboqs-python's auto-install stdout banner + faulthandler
+          # notice; grab just the final True/False and map to a floor number.
+          # Two shell commands, not a python -c, so the substitution is
+          # unambiguous even when oqs prints noise during first import.
+          if python -c "import oqs; e=oqs.get_enabled_sig_mechanisms(); import sys; sys.exit(0 if ('SLH-DSA-SHA2-128f' in e or 'SPHINCS+-SHA2-128f-simple' in e) else 1)" 2>/dev/null; then
+            floor=69
+          else
+            floor=64
+          fi
           echo "coverage floor: $floor%"
           python -m pytest -q --tb=short \
             --cov=world_model_server \
