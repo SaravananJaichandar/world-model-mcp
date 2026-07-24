@@ -43,6 +43,7 @@ _AUDIT_CHAIN_TEST_MODULES = frozenset({
     "tests/test_operational_e2e.py",
     "tests/test_tamper_evident_concurrent_append.py",
     "tests/test_verify_slh_dsa_semantics.py",
+    "tests/test_audit_dump_streaming.py",
     "tests/integration/test_pin_annotation_integration.py",
     "tests/security/test_pin_annotation_security.py",
 })
