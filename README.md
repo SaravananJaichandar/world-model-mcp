@@ -4,7 +4,7 @@
 
 **World Model MCP is the memory-graph infrastructure that closes that gap.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, adversarially verifies retrievals via an independent Coach LLM, and runs across Claude Code, Cursor, Codex, pi, OpenClaw, Hermes Agent, Continue, GitHub Copilot Chat, Cline, and Windsurf.
 
-> **Latest: v0.15.2** — Concurrent-append race fix in `tamper_evident.append_entry`. Prior versions could interleave two writers against the same committed snapshot and produce a chain where two entries shared a `prev_hash`, breaking the `prev_hash(N+1) == entry_hash(N)` invariant under concurrent load. Fixed with a `BEGIN IMMEDIATE` around the append; new regression test spawns 40 concurrent writers and verifies the resulting chain end-to-end. The race was surfaced in production by the v0.15.1 offline verifier itself — a strong data point for "we sell the primitive that finds our own bugs." Recommended upgrade for any deployment with two or more concurrent MCP writers. Ships on top of v0.15.1 (`etch-verify` CLI + `audit_dump` manifest export) and v0.15.0 (`pin_annotation` MCP tool + chain integration + `prove_annotation_inclusion`). See [full version history](#full-version-history) below.
+> **Latest: v0.15.3** — Compliance-semantic fix on `verify_slh_dsa`. v0.15.2 made this function return `False` when SLH-DSA was unavailable in the local liboqs build, which silently reclassified "cannot verify in this environment" as "verified as tampered" — an auditor running `etch-verify` on a laptop without SLH-DSA would have seen a chain-integrity FAIL and reasonably concluded tampering. Chain would be fine; tool would be broken. v0.15.3 makes `verify_slh_dsa` raise `RuntimeError` when unavailable, propagates through `verify_hybrid`, and `etch-verify` catches it as a distinct `epoch_signatures_unverifiable` check with the environment error in the detail column. `chain_integrity` and `epoch_signatures` are now reserved for real tamper detection. Recommended upgrade for any v0.15.2 install that may run signature verification on an environment without proper liboqs. Ships on top of v0.15.2 (concurrent-append race fix), v0.15.1 (`etch-verify` CLI + `audit_dump`), and v0.15.0 (`pin_annotation`). See [full version history](#full-version-history) below.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -85,6 +85,15 @@ All three point at the same `.claude/world-model/` DB path, so installing multip
 
 <details id="full-version-history">
 <summary><strong>Full version history (v0.7.0 onward)</strong></summary>
+
+## What's new in v0.15.3
+
+- **`verify_slh_dsa` raises `RuntimeError` when SLH-DSA is unavailable in the local liboqs build.** v0.15.2 returned `False` in this case with a docstring line claiming "compliance-correct." That framing was wrong: a signature that CANNOT be verified in the environment is not evidence that the signature is invalid. Returning `False` for both silently reclassified an environment problem as tamper detection.
+- **`verify_hybrid` propagates the exception.** Any caller — `etch-verify`, `tamper_evident` chain verification, downstream integrations — must distinguish "unverifiable here" from "verified as invalid." Silently swallowing the exception into a `False` return would restore the v0.15.2 semantic drift.
+- **`etch-verify` catches the RuntimeError and reports a distinct `epoch_signatures_unverifiable` check** with the underlying error verbatim in the detail column. The `chain_integrity` and `epoch_signatures` check names remain reserved for real tamper detection, so an operator reading the report can distinguish tool problems from chain problems at a glance.
+- **New test file `tests/test_verify_slh_dsa_semantics.py` (+5 tests)** locks in every branch: unavailable raises, invalid returns False, wrong-length returns False, verify_hybrid propagates, etch-verify reports the correct check name. If a future refactor collapses these outcomes back together, the tests fail loud with the compliance-story reasoning in the assertion message.
+- **No other API changes, no schema changes.** Environments with a proper liboqs installation (the vast majority — Debian `apt install liboqs-dev`, macOS `brew install liboqs`, source builds) see identical behavior.
+- **Recommendation:** Upgrade any v0.15.2 install that may run signature verification on an environment where liboqs might not have SLH-DSA. Prior versions could silently misreport an environment problem as tamper detection.
 
 ## What's new in v0.15.2
 

@@ -1,5 +1,42 @@
 # World Model MCP - Release Notes
 
+## v0.15.3 (July 2026)
+
+Compliance-semantic fix on `verify_slh_dsa`. Recommended for any deployment that upgraded to v0.15.2 and may run `etch-verify` (or any downstream signature verification) in an environment without SLH-DSA in the local liboqs build.
+
+### The problem v0.15.2 introduced
+
+v0.15.2 made `hybrid_signer` import successfully when liboqs is missing SLH-DSA — a real improvement for non-audit-chain use cases. But `verify_slh_dsa` was written to return `False` when SLH-DSA was unavailable, with a docstring line claiming "compliance-correct." That framing was wrong.
+
+A signature that **cannot be verified** in the local environment is not the same as a signature **verified as invalid**. Returning `False` in both cases silently reclassified an "unverifiable here" outcome as "verified as tampered." An auditor running `etch-verify` on a laptop with a broken liboqs would have seen a `chain_integrity` FAIL and reasonably concluded tampering. The chain would be fine; the tool would be broken.
+
+For a product whose entire value proposition is producing tamper-evidence a third party can trust, that kind of semantic drift is exactly what we cannot ship.
+
+### What v0.15.3 does
+
+- **`verify_slh_dsa` now raises `RuntimeError` when SLH-DSA is unavailable.** The message names the missing mechanism (`SLH-DSA-SHA2-128f` / legacy `SPHINCS+-SHA2-128f-simple`), lists what IS enabled in the running build, and points at the fix (install a liboqs build with SLH-DSA support). Same as `_require_slh_dsa()` used elsewhere in the module.
+- **`verify_hybrid` propagates the exception** (docstring updated). Callers must distinguish "unverifiable in this environment" from "verified as invalid."
+- **`etch-verify` CLI catches the `RuntimeError` and records a distinct `epoch_signatures_unverifiable` check** in the report output, with the environment error verbatim in the detail column. `chain_integrity` and `epoch_signatures` are no longer reported as failed for environment-level problems — those check names remain reserved for real tamper detection.
+- **No other API changes.** No schema changes. No behavior change for correctly-installed environments — signatures verify normally on any prod box with a proper liboqs installation.
+
+### Recommended action
+
+If you have a v0.15.2 install and run `etch-verify` (or any code path that reaches `verify_hybrid`) in an environment where the local liboqs might not have SLH-DSA, upgrade to v0.15.3. Prior versions could silently misreport an environment problem as a tamper detection.
+
+### Test surface
+
+`tests/test_verify_slh_dsa_semantics.py` (+5 tests):
+
+- `verify_slh_dsa` raises when unavailable, with a message that names the missing primitive and the fix path.
+- `verify_slh_dsa` still returns False for genuinely invalid signatures (real signature over one message, verified against a different message).
+- `verify_slh_dsa` returns False for shape-invalid input (wrong-length signature).
+- `verify_hybrid` propagates the RuntimeError through — the exception is NOT swallowed into a False return.
+- `etch-verify` reports `epoch_signatures_unverifiable` (not `epoch_signatures`) when signature verification cannot proceed due to environment; the detail column carries the underlying error verbatim.
+
+### Origin of the miss
+
+The oversight was caught by a user question ("could this fail silently for other users?") minutes after v0.15.2 shipped. That's why v0.15.3 arrives fast — a genuine semantic drift in a compliance primitive is a fix-forward priority, not a next-release feature.
+
 ## v0.15.2 (July 2026)
 
 Concurrent-append race fix in `tamper_evident.append_entry`. Recommended upgrade for any deployment that may see two or more concurrent MCP writers against the same audit chain.

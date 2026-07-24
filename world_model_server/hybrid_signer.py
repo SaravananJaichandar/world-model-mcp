@@ -342,13 +342,24 @@ def verify_slh_dsa(
     Verify an SLH-DSA-SHA2-128f-simple signature over the domain-separated
     message.
 
-    Returns False on any error rather than raising. Rejects signatures of
-    wrong length up front to avoid liboqs-internal errors on malformed input.
-    Returns False if SLH-DSA is not available in this build — the caller
-    treating this as "signature does not verify" is compliance-correct.
+    Returns False on any verification error, including malformed input
+    (wrong-length signature, wrong-length public key). Rejects up front
+    to avoid liboqs-internal errors on shape mismatches.
+
+    RAISES RuntimeError if SLH-DSA is not available in this liboqs
+    build. This is a deliberate compliance choice: an environment
+    that CANNOT verify a signature is not the same as one where the
+    signature is verified as invalid. Returning False in both cases
+    would silently reclassify an "unverifiable in this environment"
+    result as "verified as tampered" — an auditor running etch-verify
+    on a laptop with a broken liboqs would see a chain-integrity FAIL
+    that looks like real tamper. Raising forces the caller (etch-verify
+    CLI, verify_hybrid, any downstream integration) to distinguish
+    the two outcomes explicitly. See v0.15.3 release notes for the
+    reasoning trail — this closes a semantic drift in v0.15.2.
     """
     if not SLH_DSA_AVAILABLE:
-        return False
+        raise RuntimeError(_slh_dsa_unavailable_message())
     if len(signature) != SLH_DSA_SIGNATURE_BYTES:
         return False
     if len(public_key_bytes) != SLH_DSA_PUBLIC_KEY_BYTES:
@@ -440,6 +451,13 @@ def verify_hybrid(
 
     Either failure invalidates the whole envelope. This is the whole point
     of the hybrid construction.
+
+    Raises RuntimeError if SLH-DSA is not available in this liboqs
+    build (propagated from verify_slh_dsa). Callers — etch-verify CLI,
+    tamper_evident chain verification, downstream integrations — must
+    surface that error to the operator rather than treat it as
+    "verification failed." A tool that cannot verify is not evidence
+    that the signature is invalid; see v0.15.3 release notes.
     """
     if envelope.get("version") != SIGNATURE_ENVELOPE_VERSION:
         return False

@@ -140,12 +140,25 @@ def _verify_epoch_chain_and_signatures(
             "closed_at": e["closed_at"],
         }
         signed_bytes = tamper_evident.canonical_json(payload)
-        if not hs.verify_hybrid(
-            envelope=e["signature_envelope"],
-            message=signed_bytes,
-            ed25519_public_key=ed_pub,
-            slh_dsa_public_key=slh_pub,
-        ):
+        try:
+            verified = hs.verify_hybrid(
+                envelope=e["signature_envelope"],
+                message=signed_bytes,
+                ed25519_public_key=ed_pub,
+                slh_dsa_public_key=slh_pub,
+            )
+        except RuntimeError as exc:
+            # SLH-DSA unavailable in this environment. Fail the whole
+            # verify with a distinct check-name so an operator reading
+            # the output can tell "cannot verify" apart from "verified
+            # as tampered." Both fail the report, but the reason
+            # column names the environment problem explicitly.
+            report.add(
+                "epoch_signatures_unverifiable", False,
+                f"cannot verify epoch seq={e['seq']}: {exc}",
+            )
+            return
+        if not verified:
             report.add(
                 "epoch_signatures", False,
                 f"epoch seq={e['seq']} hybrid signature failed to verify",
