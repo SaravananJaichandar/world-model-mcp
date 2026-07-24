@@ -1,0 +1,1 @@
+{"manifest_version": "1", "genesis_hash": "sha256:00", "epoch_genesis_root": "sha256:00", "public_keys": {"ed25519": "", "slh_dsa": ""}, "tamper_evident_log": [], "epochs": [], "source_rows": {"annotations": [], "events": []}}

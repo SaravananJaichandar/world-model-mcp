@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.15.4"
+version = "0.15.5"
 description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
 authors = [
     {name = "SaravananJaichandar"}
@@ -35,6 +35,13 @@ dependencies = [
     #   Debian/Ubuntu: apt install liboqs-dev
     "cryptography>=42.0.0",
     "liboqs-python>=0.15.0",
+    # v0.15.5: streaming JSON parser for etch-verify. Verifiers on
+    # chains large enough to OOM json.load (verified 2026-07-24 on a
+    # 760MB manifest exceeding 3GB after Python dict expansion) parse
+    # via ijson so memory usage stays O(single row + compact row-hash
+    # lookup) instead of O(manifest size). Ships a pure-Python
+    # fallback backend so no system deps are required.
+    "ijson>=3.2",
 ]
 
 [project.optional-dependencies]

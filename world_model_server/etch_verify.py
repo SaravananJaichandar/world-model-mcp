@@ -42,6 +42,8 @@ import json
 import sys
 from pathlib import Path
 
+import ijson
+
 # The liboqs-python C library prints "liboqs-python faulthandler is
 # disabled" to stdout on first import. Auditors piping
 # `etch-verify --json` to jq would hit unparseable input otherwise.
@@ -286,6 +288,314 @@ def verify_manifest(manifest: dict) -> VerificationReport:
     return report
 
 
+# ---------------------------------------------------------------------------
+# Streaming verify (v0.15.5)
+#
+# verify_manifest(dict) works only when the caller already json.loaded the
+# manifest into a Python dict. On real production chains that dict pins
+# multiple gigabytes of RSS — verified 2026-07-24 on a 760MB manifest
+# exceeding 3GB after dict expansion + verify allocations.
+#
+# verify_manifest_streaming parses the manifest with ijson row-by-row and
+# produces the identical verdict without ever materializing the manifest
+# in memory. Memory footprint: O(single row + compact row_hash lookup).
+# The lookup is `row_id -> (row_hash, kind)`, roughly a few hundred bytes
+# per chained row — far smaller than holding every log entry as a full dict.
+#
+# Byte-parity of the VERDICT is a load-bearing property: verify_manifest
+# and verify_manifest_streaming return equivalent report structures for
+# the same manifest bytes, so hosted-side + auditor-side + offline CLI
+# all produce identical evidence for the same audit chain state.
+# ---------------------------------------------------------------------------
+
+
+def _stream_scalar_header(file_path: str | Path) -> dict:
+    """Walk the manifest and pluck the small scalar header fields we
+    need for later passes (manifest_version, genesis_hash,
+    epoch_genesis_root, public_keys.ed25519, public_keys.slh_dsa).
+
+    Uses ijson.parse which walks the whole file's token stream but
+    never allocates for arrays. Peak memory is bounded by the size
+    of the largest single scalar (< 1KB) regardless of manifest size.
+    """
+    header: dict = {"public_keys": {}}
+    with open(file_path, "rb") as f:
+        for prefix, event, value in ijson.parse(f):
+            if event != "string":
+                continue
+            if prefix == "manifest_version":
+                header["manifest_version"] = value
+            elif prefix == "genesis_hash":
+                header["genesis_hash"] = value
+            elif prefix == "epoch_genesis_root":
+                header["epoch_genesis_root"] = value
+            elif prefix == "public_keys.ed25519":
+                header["public_keys"]["ed25519"] = value
+            elif prefix == "public_keys.slh_dsa":
+                header["public_keys"]["slh_dsa"] = value
+    return header
+
+
+def _stream_verify_chain_integrity(
+    file_path: str | Path, header: dict, report: VerificationReport,
+) -> dict[str, tuple[str, str]] | None:
+    """Stream tamper_evident_log entries. Verify each chain link and
+    recompute entry_hash from the entry's own fields.
+
+    On success returns a compact `row_id -> (row_hash, kind)` dict
+    for the annotation + event content-lock passes to consume.
+    Returns None if any chain-integrity check failed (the failing
+    check is appended to `report`).
+    """
+    row_lookup: dict[str, tuple[str, str]] = {}
+    prev_hash = header["genesis_hash"]
+
+    with open(file_path, "rb") as f:
+        for entry in ijson.items(f, "tamper_evident_log.item"):
+            # Cast ijson-produced Decimal ints to plain int so
+            # canonical_json (which uses json.dumps under the hood
+            # and rejects Decimal) accepts them. Everything else is
+            # already str per the manifest schema.
+            seq = int(entry["seq"])
+            row_hash_val = str(entry["row_hash"])
+            kind = str(entry["kind"])
+            ts = str(entry["ts"])
+            row_prev_hash = str(entry["prev_hash"])
+            entry_hash_stored = str(entry["entry_hash"])
+            row_id = str(entry["row_id"])
+
+            if row_prev_hash != prev_hash:
+                report.add(
+                    "chain_integrity", False,
+                    f"entry seq={seq} prev_hash {row_prev_hash} "
+                    f"does not match previous entry_hash {prev_hash}",
+                )
+                return None
+            recomputed = tamper_evident.chain_hash(
+                prev_hash=row_prev_hash,
+                entry_row_hash=row_hash_val,
+                kind=kind,
+                seq=seq,
+                ts=ts,
+            )
+            if recomputed != entry_hash_stored:
+                report.add(
+                    "chain_integrity", False,
+                    f"entry seq={seq} entry_hash recomputation mismatch "
+                    f"(expected {entry_hash_stored}, got {recomputed})",
+                )
+                return None
+            row_lookup[row_id] = (row_hash_val, kind)
+            prev_hash = entry_hash_stored
+            report.entries_checked += 1
+    report.add("chain_integrity", True)
+    return row_lookup
+
+
+def _normalize_envelope(envelope: object) -> dict:
+    """Coerce an ijson-produced envelope back to a plain dict with
+    `version` cast to int. Everything else (hex strings, fingerprints)
+    is already str in the manifest schema, so a shallow copy is
+    sufficient."""
+    e = dict(envelope) if envelope is not None else {}
+    if "version" in e:
+        try:
+            e["version"] = int(e["version"])
+        except (TypeError, ValueError):
+            pass
+    return e
+
+
+def _stream_verify_epochs(
+    file_path: str | Path, header: dict, report: VerificationReport,
+) -> bool:
+    """Stream `epochs`. Verify prev_epoch_root chains + hybrid
+    signatures. Distinguishes 'unverifiable' (SLH-DSA not available
+    in this environment) from 'verified as invalid' via a distinct
+    check name — same semantics as verify_manifest."""
+    ed_pub = base64.b64decode(header["public_keys"]["ed25519"])
+    slh_pub = base64.b64decode(header["public_keys"]["slh_dsa"])
+    prev_root = header["epoch_genesis_root"]
+
+    with open(file_path, "rb") as f:
+        for e in ijson.items(f, "epochs.item"):
+            seq = int(e["seq"])
+            first_entry_seq = int(e["first_entry_seq"])
+            last_entry_seq = int(e["last_entry_seq"])
+            entry_count = int(e["entry_count"])
+            merkle_root = str(e["merkle_root"])
+            prev_epoch_root_val = str(e["prev_epoch_root"])
+            closed_at = str(e["closed_at"])
+
+            if prev_epoch_root_val != prev_root:
+                report.add(
+                    "epoch_chain", False,
+                    f"epoch seq={seq} prev_epoch_root does not chain "
+                    f"(expected {prev_root}, got {prev_epoch_root_val})",
+                )
+                return False
+            payload = {
+                "merkle_root": merkle_root,
+                "prev_epoch_root": prev_epoch_root_val,
+                "first_entry_seq": first_entry_seq,
+                "last_entry_seq": last_entry_seq,
+                "entry_count": entry_count,
+                "closed_at": closed_at,
+            }
+            signed_bytes = tamper_evident.canonical_json(payload)
+            envelope = _normalize_envelope(e["signature_envelope"])
+            try:
+                verified = hs.verify_hybrid(
+                    envelope=envelope,
+                    message=signed_bytes,
+                    ed25519_public_key=ed_pub,
+                    slh_dsa_public_key=slh_pub,
+                )
+            except RuntimeError as exc:
+                report.add(
+                    "epoch_signatures_unverifiable", False,
+                    f"cannot verify epoch seq={seq}: {exc}",
+                )
+                return False
+            if not verified:
+                report.add(
+                    "epoch_signatures", False,
+                    f"epoch seq={seq} hybrid signature failed to verify",
+                )
+                return False
+            prev_root = merkle_root
+            report.epochs_checked += 1
+    report.add("epoch_chain", True)
+    report.add("epoch_signatures", True)
+    return True
+
+
+def _stream_verify_annotation_content_lock(
+    file_path: str | Path,
+    row_lookup: dict[str, tuple[str, str]],
+    report: VerificationReport,
+) -> bool:
+    """Stream `source_rows.annotations`. For each annotation row,
+    look up the row_hash the chain locked in and recompute it. Fail
+    on any mismatch or missing chain entry — same behavior and
+    diagnostics as _verify_annotation_content_lock."""
+    with open(file_path, "rb") as f:
+        for raw in ijson.items(f, "source_rows.annotations.item"):
+            row = dict(raw)
+            row_id = str(row["id"])
+            entry = row_lookup.get(row_id)
+            if entry is None:
+                report.add(
+                    "annotation_content_lock", False,
+                    f"annotation {row_id!r} has no matching log entry",
+                )
+                return False
+            logged_row_hash, kind = entry
+            if kind != "annotation_create":
+                report.add(
+                    "annotation_content_lock", False,
+                    f"annotation {row_id!r} log entry kind is "
+                    f"{kind!r}, not 'annotation_create'",
+                )
+                return False
+            reconstructed = tamper_evident.reconstruct_annotation_payload(row)
+            recomputed = tamper_evident.row_hash(reconstructed)
+            if recomputed != logged_row_hash:
+                report.add(
+                    "annotation_content_lock", False,
+                    f"annotation {row_id!r} row_hash mismatch "
+                    f"(reconstructed {recomputed}, logged {logged_row_hash}) "
+                    "— annotations.db content was mutated after signing",
+                )
+                return False
+            report.annotations_checked += 1
+    report.add("annotation_content_lock", True)
+    return True
+
+
+def _stream_verify_event_content_lock(
+    file_path: str | Path,
+    row_lookup: dict[str, tuple[str, str]],
+    report: VerificationReport,
+) -> None:
+    """Stream `source_rows.events`. Same shape as annotation content
+    lock but with the event-specific payload reconstruction."""
+    with open(file_path, "rb") as f:
+        for raw in ijson.items(f, "source_rows.events.item"):
+            row = dict(raw)
+            row_id = str(row["id"])
+            entry = row_lookup.get(row_id)
+            if entry is None:
+                report.add(
+                    "event_content_lock", False,
+                    f"event {row_id!r} has no matching log entry",
+                )
+                return
+            logged_row_hash, kind = entry
+            if kind != "event_create":
+                report.add(
+                    "event_content_lock", False,
+                    f"event {row_id!r} log entry kind is {kind!r}, "
+                    "not 'event_create'",
+                )
+                return
+            reconstructed = _reconstruct_event_payload(row)
+            recomputed = tamper_evident.row_hash(reconstructed)
+            if recomputed != logged_row_hash:
+                report.add(
+                    "event_content_lock", False,
+                    f"event {row_id!r} row_hash mismatch "
+                    f"(reconstructed {recomputed}, logged {logged_row_hash}) "
+                    "— events.db content was mutated after signing",
+                )
+                return
+            report.events_checked += 1
+    report.add("event_content_lock", True)
+
+
+def verify_manifest_streaming(file_path: str | Path) -> VerificationReport:
+    """Streaming counterpart to verify_manifest(dict).
+
+    Parses the manifest file row-by-row via ijson so memory usage is
+    O(single row + compact row_hash lookup) rather than O(manifest
+    size). Use this for chains large enough that json.load into a
+    Python dict would OOM the verifier host.
+
+    Same verdict, same check names, same counts as verify_manifest
+    for the same manifest bytes. Byte-parity of the verdict is a
+    load-bearing property so hosted-side, auditor-side, and offline
+    CLI all produce identical evidence for the same audit chain state.
+
+    Requires the `ijson` package (v0.15.5+ core dependency).
+    """
+    report = VerificationReport()
+
+    header = _stream_scalar_header(file_path)
+    if header.get("manifest_version") != _dump.MANIFEST_VERSION:
+        report.add(
+            "manifest_version", False,
+            f"expected version {_dump.MANIFEST_VERSION!r}, got "
+            f"{header.get('manifest_version')!r}",
+        )
+        return report
+    report.add("manifest_version", True)
+
+    row_lookup = _stream_verify_chain_integrity(file_path, header, report)
+    if row_lookup is None:
+        return report
+
+    if not _stream_verify_epochs(file_path, header, report):
+        return report
+
+    if not _stream_verify_annotation_content_lock(
+        file_path, row_lookup, report,
+    ):
+        return report
+
+    _stream_verify_event_content_lock(file_path, row_lookup, report)
+    return report
+
+
 def _format_human(report: VerificationReport, path: str) -> str:
     lines: list[str] = []
     header = f"etch-verify: {path}"
@@ -311,6 +621,16 @@ def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _sha256_file(path: Path) -> str:
+    """Streaming SHA-256 of a file so `manifest_sha256` is available
+    without loading the whole manifest into memory."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="etch-verify",
@@ -328,25 +648,51 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Emit the report as JSON for machine consumption.",
     )
+    parser.add_argument(
+        "--in-memory",
+        action="store_true",
+        help=(
+            "Force the pre-v0.15.5 in-memory verifier (json.load + "
+            "verify_manifest). Only useful for debugging the streaming "
+            "path. The default streaming verifier handles any manifest "
+            "size without materializing the whole manifest in memory."
+        ),
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.manifest)
-    try:
-        raw = path.read_bytes()
-    except OSError as e:
-        sys.stderr.write(f"etch-verify: cannot read {args.manifest}: {e}\n")
-        return 2
-    try:
-        manifest = json.loads(raw)
-    except json.JSONDecodeError as e:
-        sys.stderr.write(f"etch-verify: {args.manifest} is not valid JSON: {e}\n")
-        return 2
 
-    report = verify_manifest(manifest)
+    if args.in_memory:
+        try:
+            raw = path.read_bytes()
+        except OSError as e:
+            sys.stderr.write(f"etch-verify: cannot read {args.manifest}: {e}\n")
+            return 2
+        try:
+            manifest = json.loads(raw)
+        except json.JSONDecodeError as e:
+            sys.stderr.write(
+                f"etch-verify: {args.manifest} is not valid JSON: {e}\n"
+            )
+            return 2
+        report = verify_manifest(manifest)
+        manifest_sha256 = _sha256_hex(raw)
+    else:
+        try:
+            report = verify_manifest_streaming(path)
+        except (FileNotFoundError, PermissionError, IsADirectoryError) as e:
+            sys.stderr.write(f"etch-verify: cannot read {args.manifest}: {e}\n")
+            return 2
+        except ijson.JSONError as e:
+            sys.stderr.write(
+                f"etch-verify: {args.manifest} is not valid JSON: {e}\n"
+            )
+            return 2
+        manifest_sha256 = _sha256_file(path)
 
     if args.json:
         payload = report.as_dict()
-        payload["manifest_sha256"] = _sha256_hex(raw)
+        payload["manifest_sha256"] = manifest_sha256
         payload["manifest_path"] = str(path)
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:

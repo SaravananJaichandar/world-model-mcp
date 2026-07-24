@@ -262,9 +262,15 @@ class TestSubprocessBoundaryCrash:
         # Fresh recovery process: opens same DB path, writes 5 more
         # events (triggers an epoch close at threshold=5), exports
         # a dump, runs the verifier. Everything must succeed.
+        # Uses mock.patch.dict so the parent's os.environ is restored
+        # on exit — a prior version of this test mutated os.environ
+        # directly and leaked WORLD_MODEL_AUDIT_LOG into every
+        # subsequent test in the same session (verified 2026-07-24
+        # via a flaky failure in test_audit_dump_streaming.py's
+        # "must raise when audit disabled" case under random test
+        # ordering). Cleaning up via patch.dict fixes the flake and
+        # prevents any future cross-test env pollution.
         async def _recover_and_verify():
-            os.environ["WORLD_MODEL_AUDIT_LOG"] = "on"
-            os.environ["WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE"] = "5"
             kg = KnowledgeGraph(str(tmp_path))
             await kg.initialize()
             for i in range(5):
@@ -276,7 +282,11 @@ class TestSubprocessBoundaryCrash:
             manifest = await audit_dump.export_audit_dump(kg)
             return etch_verify.verify_manifest(manifest)
 
-        report = await _recover_and_verify()
+        with mock.patch.dict(os.environ, {
+            "WORLD_MODEL_AUDIT_LOG": "on",
+            "WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE": "5",
+        }):
+            report = await _recover_and_verify()
         assert report.ok, (
             f"chain must remain verifiable after hard subprocess "
             f"kill; got: {[c for c in report.checks if not c['ok']]}"

@@ -1,5 +1,43 @@
 # World Model MCP - Release Notes
 
+## v0.15.5 (July 2026)
+
+Streaming offline verifier, FIPS 205 SLH-DSA known-answer tests, and adversarial-input fuzz coverage on the verify path. Closes the OOM window on very large chains end to end and locks the crypto stack against silent liboqs regressions.
+
+### Streaming verify
+
+- **`verify_manifest_streaming(file_path)` in `world_model_server.etch_verify`.** Parses the manifest row-by-row via `ijson` so verify memory usage is O(single row + compact row_hash lookup) instead of O(manifest size). Same verdict, same check names, same counts as the in-memory `verify_manifest(dict)` for the same manifest bytes.
+- **`etch-verify` CLI uses streaming by default.** `--in-memory` remains available as an escape hatch for debugging the streaming path. Manifest sha256 is computed in a 64KB-chunked streaming pass so a 10GB manifest does not need to fit in RAM to be hashed.
+- **Hosted-side `verify_attestation.run_verify_once` is fully streaming.** Prior to v0.15.5, the hosted attestation timer streamed the export but then `json.load`'d the file back into a Python dict for verify (verified 2026-07-24 to pin multi-GB RSS on a 760MB manifest, forcing preflight_skipped rows). v0.15.5 removes the `json.load` step; memory stays bounded through export + hash + verify.
+- **`ijson >= 3.2`** added to core dependencies. Ships a pure-Python fallback backend so no system deps are required.
+
+### FIPS 205 known-answer tests
+
+- **`tests/test_fips_205_slh_dsa_kat.py`.** Locks four invariants against silent liboqs drift: FIPS 205 §11.1 parameter sizes for SLH-DSA-SHA2-128f (public key = 32 bytes, secret key = 64 bytes, signature = 17,088 bytes); sign / verify functional round-trip with wrong-key + wrong-message + mutated-signature rejection; byte-format equivalence across the two mechanism names liboqs may expose (`SLH-DSA-SHA2-128f` per FIPS 205, or the legacy `SPHINCS+-SHA2-128f-simple`); and a fixed KAT-vector fixture that MUST verify true forever.
+- **KAT vector fixture at `tests/fixtures/slh_dsa_kat_vectors.json`.** Three checked-in `(pk, msg, sig)` triples covering empty / short / 64-byte messages. Regenerate via `scripts/generate_slh_dsa_kat_vectors.py` only on intentional algorithm changes.
+- Cross-implementation KAT against externally published NIST FIPS 205 test vectors is queued as a follow-up once NIST publishes canonical KAT files in a stable machine-readable format.
+
+### Fuzz coverage on the verify path
+
+- **Atheris fuzz targets in `fuzz/fuzz_verify_manifest.py`.** Feeds random and mutated bytes into both verify entry points, asserts no unhandled exception type escapes, no hang, no memory blow-up. Seed corpus checked into `fuzz/corpus/` covers empty, valid-v1 stub, wrong-version, deeply nested, adversarial-typed, and invalid-UTF8 shapes. Run locally with `python fuzz/fuzz_verify_manifest.py fuzz/corpus/ -max_total_time=60`.
+- **Non-Atheris smoke fuzz in `tests/test_fuzz_smoke_verify.py`.** Same "no unexpected exception" invariant exercised via 29 deterministic adversarial payloads plus 100 deterministic-random 200-byte seeds against both `verify_manifest` and `verify_manifest_streaming`. Runs in every CI pass without needing a Clang or libFuzzer toolchain. 258 parametrized cases total.
+
+### Test hardening
+
+- **Root-caused a pre-existing env-leak flake in `tests/test_operational_e2e.py`.** The hard-kill recovery test was mutating `os.environ["WORLD_MODEL_AUDIT_LOG"]` directly in the parent process without cleanup, which leaked into subsequent tests under random ordering (surfaced 2026-07-24 as a flake in `test_audit_dump_streaming.py`'s "must raise when audit disabled" case). Fixed to use `mock.patch.dict` for scoped env cleanup, matching the pattern the rest of the suite already uses.
+
+### Coverage floor
+
+- **`pytest.yml` `--cov-fail-under` bumped 69 → 71 (SLH-DSA-enabled) and 64 → 66 (SLH-DSA-unavailable CI).** New floor matches the 2026-07-24 baseline of 72.06% across `world_model_server` (up from 69.74% on v0.15.4) after streaming verify, FIPS 205 KAT, and smoke fuzz coverage landed. Same ratcheting rule: never lowered to make a PR merge; bumped by 1 point whenever a feature branch lifts total coverage by ≥ 1.
+
+### Deferred to a follow-up
+
+- **Ruff hard gate + mypy strict.** ~745 pre-existing typing-deprecation warnings across the source tree (including `tests/`) need their own dedicated cleanup PR before either can be turned on as a hard CI gate. Bundling them into v0.15.5 would balloon the diff and risk quality on the shipping changes. Landing separately as its own `chore/ruff-mypy-strict` PR.
+
+### Recommended action
+
+Every operator running `etch-verify` or the hosted attestation timer against chains above ~50MB should upgrade to v0.15.5. The streaming verifier removes the last remaining OOM path in the verify pipeline; the hosted timer no longer needs `ETCH_VERIFY_MAX_AUDIT_DB_BYTES` capped to work around it. Prior versions ran the manifest through `json.load` and pinned multi-GB RSS on large chains.
+
 ## v0.15.4 (July 2026)
 
 Streaming audit-dump exporter. Recommended for any deployment whose audit chain has grown large enough to make the in-memory `export_audit_dump_to_file` OOM the host.
