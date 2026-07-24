@@ -1,5 +1,39 @@
 # World Model MCP - Release Notes
 
+## v0.15.2 (July 2026)
+
+Concurrent-append race fix in `tamper_evident.append_entry`. Recommended upgrade for any deployment that may see two or more concurrent MCP writers against the same audit chain.
+
+### What ships
+
+- **`BEGIN IMMEDIATE` around the append transaction.** Prior versions read the last `entry_hash` and `MAX(seq)` as separate statements before computing the new entry's `entry_hash` and inserting. Two concurrent writers against the same committed snapshot could both compute the same `prev_hash` — resulting in the second write chaining back to the same predecessor as the first, breaking the "prev_hash of entry N+1 equals entry_hash of entry N" invariant. Taking the reserved write lock BEFORE the SELECTs closes the window: any concurrent writer either waits on the lock or fails-fast with `SQLITE_BUSY`.
+- **No API changes, no schema changes.** The append signature, the return dict, and the log schema are unchanged. Chains produced by prior versions are still verifiable — the offline verifier `etch-verify` catches any pre-existing `prev_hash` mismatches with a `chain_integrity` FAIL and a specific "entry seq=N prev_hash does not match previous entry_hash" reason. Recommendation is to run `etch-verify` against your existing chains after upgrading, so any historically-broken segments are identified.
+
+### How this was found
+
+Our own offline verifier detected the race in a running deployment. A chain integrity FAIL surfaced on one project's ledger with the exact seq numbers of the two racing writes and their identical `prev_hash` values. The pattern in the data (two entries in the same second, both with the same `prev_hash` pointing at their common predecessor) matched the read-then-insert non-atomic pattern in `append_entry` under concurrent load. That is the trust surface working as intended — the verifier is what catches this class of bug, whether the race is our own or a future contributor's. This release closes the primary control (append-path serialization) so the verifier's catch is a secondary defense, not the only one.
+
+### Test surface
+
+New regression file `tests/test_tamper_evident_concurrent_append.py` (2 tests, ~200 LOC):
+
+- **40 concurrent `create_event` tasks land 40 contiguous entries** with valid `prev_hash` chaining and pass `etch_verify.verify_manifest` end-to-end.
+- **25 concurrent `create_event` tasks across two epoch closes** still produce a chain whose integrity + epoch signatures + content lock all PASS.
+
+Both tests are proven-signal: temporarily removing the `BEGIN IMMEDIATE` line makes both fail with `prev_hash` mismatches at exact seq boundaries where the writers race. Restoring it makes them pass. The tests reproduce the exact class of bug that surfaced in production.
+
+### Recommended action for existing deployments
+
+1. Upgrade to v0.15.2.
+2. Run `etch-verify <dump.json>` (or the systemd timer if you have Etch's hosted attestation loop wired up) against each project's chain. Any historically-broken segments will surface as FAILs with specific seq numbers.
+3. Historically-broken chains cannot be repaired retroactively without breaking the tamper-evidence property. The broken chain IS the truth about what happened. Options: (a) keep the chain as-is and note the break in your compliance documentation, (b) close a fresh chain from the point of the last valid entry.
+
+### Contract preservation
+
+- No changes to `pin_annotation`, `audit_dump`, `etch-verify`, or any other public interface.
+- Manifest schema remains `manifest_version: "1"`.
+- Chain-integrity guarantees now hold under concurrent-writer load, not just under single-writer.
+
 ## v0.15.1 (July 2026)
 
 `etch-verify` offline reference verifier + dump-manifest export. Ships the CLI ADR-0001 §5 e2e names by tightening the follow-up gap flagged in the v0.15.0 notes.

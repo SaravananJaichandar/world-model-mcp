@@ -4,7 +4,7 @@
 
 **World Model MCP is the memory-graph infrastructure that closes that gap.** A temporal knowledge graph that validates code changes against learned constraints at the edit boundary, re-injects relevant context after compaction, tracks contradictions with confidence-weighted resolution, adversarially verifies retrievals via an independent Coach LLM, and runs across Claude Code, Cursor, Codex, pi, OpenClaw, Hermes Agent, Continue, GitHub Copilot Chat, Cline, and Windsurf.
 
-> **Latest: v0.15.1** — `etch-verify` offline reference verifier CLI + `audit_dump` dump-manifest export. An auditor can now run `etch-verify dump.json` against a signed audit-chain dump and get exit 0 + a PASS report across chain integrity, epoch signatures, and content lock. Ships on top of v0.15.0 (`pin_annotation` MCP tool + chain integration + `prove_annotation_inclusion` verifier). See [full version history](#full-version-history) below.
+> **Latest: v0.15.2** — Concurrent-append race fix in `tamper_evident.append_entry`. Prior versions could interleave two writers against the same committed snapshot and produce a chain where two entries shared a `prev_hash`, breaking the `prev_hash(N+1) == entry_hash(N)` invariant under concurrent load. Fixed with a `BEGIN IMMEDIATE` around the append; new regression test spawns 40 concurrent writers and verifies the resulting chain end-to-end. The race was surfaced in production by the v0.15.1 offline verifier itself — a strong data point for "we sell the primitive that finds our own bugs." Recommended upgrade for any deployment with two or more concurrent MCP writers. Ships on top of v0.15.1 (`etch-verify` CLI + `audit_dump` manifest export) and v0.15.0 (`pin_annotation` MCP tool + chain integration + `prove_annotation_inclusion`). See [full version history](#full-version-history) below.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -85,6 +85,14 @@ All three point at the same `.claude/world-model/` DB path, so installing multip
 
 <details id="full-version-history">
 <summary><strong>Full version history (v0.7.0 onward)</strong></summary>
+
+## What's new in v0.15.2
+
+- **`BEGIN IMMEDIATE` around the tamper-evident append transaction.** Prior versions read the last `entry_hash` and `MAX(seq)` in separate statements before computing the new entry's `entry_hash` and inserting. Two concurrent writers against the same committed snapshot could both compute the same `prev_hash`, breaking the chain-integrity invariant that entry N+1's `prev_hash` equals entry N's `entry_hash`. Taking the reserved write lock BEFORE the SELECTs closes the window: any concurrent writer either blocks on the lock or fails-fast with `SQLITE_BUSY`.
+- **How it was found: our own offline verifier caught it in production.** A `chain_integrity` FAIL surfaced on a running project's ledger with the exact seq numbers of two racing writes and their identical `prev_hash` values. That is the trust surface working as intended — this release closes the append-path serialization gap so the verifier's catch is a secondary defense, not the only one.
+- **New regression test file (`tests/test_tamper_evident_concurrent_append.py`, +2 tests):** 40 concurrent `create_event` tasks land 40 contiguous entries with valid chaining and pass `etch_verify` end-to-end. 25 concurrent tasks across two epoch closes still pass chain + epoch signatures + content lock. Both tests are proven-signal — reverting the `BEGIN IMMEDIATE` line makes them fail with `prev_hash` mismatches at exact seq boundaries where the writers race.
+- **No API changes, no schema changes.** Chains produced by prior versions are still verifiable, and `etch-verify` will identify any historically-broken segments with a specific "entry seq=N prev_hash does not match previous entry_hash" FAIL reason. Historically-broken chains cannot be repaired retroactively — the broken chain IS the truth about what happened — but the offline verifier tells you exactly where and why.
+- **Recommendation:** Upgrade any deployment that may see two or more concurrent MCP writers against the same audit chain, then run `etch-verify <dump.json>` against your existing chains to surface any historical breaks.
 
 ## What's new in v0.15.1
 
