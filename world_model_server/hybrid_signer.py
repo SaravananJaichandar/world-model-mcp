@@ -80,26 +80,54 @@ _SLH_DSA_ALG_FIPS205 = "SLH-DSA-SHA2-128f"
 _SLH_DSA_ALG_LEGACY = "SPHINCS+-SHA2-128f-simple"
 
 
-def _resolve_slh_dsa_alg() -> str:
-    """Return the mechanism name this liboqs installation accepts."""
+def _resolve_slh_dsa_alg() -> Optional[str]:
+    """Return the mechanism name this liboqs installation accepts, or
+    None if neither the FIPS 205 name nor the legacy SPHINCS+ name
+    is enabled. Returning None lets the module import successfully
+    in environments without a SLH-DSA-enabled liboqs — CI runners
+    whose bundled liboqs-python wheel omits the mechanism, for
+    example. Any actual signing call raises SLH_DSA_UNAVAILABLE_ERR
+    with the enabled-mechanisms list so the failure is unambiguous.
+    """
     enabled = set(oqs.get_enabled_sig_mechanisms())
     if _SLH_DSA_ALG_FIPS205 in enabled:
         return _SLH_DSA_ALG_FIPS205
     if _SLH_DSA_ALG_LEGACY in enabled:
         return _SLH_DSA_ALG_LEGACY
-    raise RuntimeError(
-        f"Neither {_SLH_DSA_ALG_FIPS205!r} nor "
-        f"{_SLH_DSA_ALG_LEGACY!r} is enabled in this liboqs build. "
-        "Upgrade liboqs to 0.14+ (or install a build with SLH-DSA "
-        "support). Enabled: "
-        f"{sorted(enabled)[:5]}... ({len(enabled)} total)"
+    return None
+
+
+_SLH_DSA_ALG: Optional[str] = _resolve_slh_dsa_alg()
+
+# Truthy iff this liboqs build enables SLH-DSA under either name.
+# External callers (tests, conftest fixtures) read this to decide
+# whether to skip chain-signing coverage.
+SLH_DSA_AVAILABLE: bool = _SLH_DSA_ALG is not None
+
+
+def _slh_dsa_unavailable_message() -> str:
+    """Human-readable diagnostic used by every SLH-DSA-touching code
+    path when the mechanism isn't enabled in this liboqs build."""
+    enabled = sorted(oqs.get_enabled_sig_mechanisms())
+    preview = enabled[:5]
+    return (
+        f"SLH-DSA is not available in this liboqs build. Neither "
+        f"{_SLH_DSA_ALG_FIPS205!r} nor {_SLH_DSA_ALG_LEGACY!r} is "
+        f"enabled. This environment cannot sign or verify audit-chain "
+        f"epochs. Install a liboqs build with SLH-DSA support "
+        f"(liboqs >= 0.14 from source, or a distro package that "
+        f"includes it). Enabled here: {preview}... ({len(enabled)} total)"
     )
 
 
-_SLH_DSA_ALG = _resolve_slh_dsa_alg()
-
-# Cached algorithm parameter sizes (queried once from liboqs at import).
-_slh_probe = oqs.Signature(_SLH_DSA_ALG)
+# Cached algorithm parameter sizes. Set from liboqs at import when
+# SLH-DSA IS enabled; None when it isn't. Downstream code that
+# validates key/signature lengths must guard on SLH_DSA_AVAILABLE
+# before dereferencing these — see _require_slh_dsa() helper.
+if SLH_DSA_AVAILABLE:
+    _slh_probe = oqs.Signature(_SLH_DSA_ALG)
+else:
+    _slh_probe = None
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +141,27 @@ SIGNATURE_ENVELOPE_VERSION = 1
 # breaking change to the audit-log message layout ever ships.
 DOMAIN_AUDIT_LOG_EPOCH_ROOT = b"world-model-mcp/audit-log/epoch-root/v1"
 
-# SLH-DSA-SHA2-128f-simple parameter sizes (from liboqs). Documented here so
-# verifiers can validate lengths before decoding.
-SLH_DSA_PUBLIC_KEY_BYTES = _slh_probe.details["length_public_key"]     # 32
-SLH_DSA_SECRET_KEY_BYTES = _slh_probe.details["length_secret_key"]    # 64
-SLH_DSA_SIGNATURE_BYTES = _slh_probe.details["length_signature"]      # 17088
+# SLH-DSA-SHA2-128f parameter sizes (from liboqs). Documented here so
+# verifiers can validate lengths before decoding. None when the
+# mechanism isn't enabled — every consumer must guard on
+# SLH_DSA_AVAILABLE before dereferencing.
+SLH_DSA_PUBLIC_KEY_BYTES = (
+    _slh_probe.details["length_public_key"] if _slh_probe else None
+)
+SLH_DSA_SECRET_KEY_BYTES = (
+    _slh_probe.details["length_secret_key"] if _slh_probe else None
+)
+SLH_DSA_SIGNATURE_BYTES = (
+    _slh_probe.details["length_signature"] if _slh_probe else None
+)
+
+
+def _require_slh_dsa() -> None:
+    """Guard called by every SLH-DSA-touching function. Raises a
+    clear error at USE time so the environment problem doesn't
+    show up as a subtle type error elsewhere."""
+    if not SLH_DSA_AVAILABLE:
+        raise RuntimeError(_slh_dsa_unavailable_message())
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +292,7 @@ class SlhDsaSigner:
         secret_key: bytes,
         domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT,
     ):
+        _require_slh_dsa()
         if len(public_key) != SLH_DSA_PUBLIC_KEY_BYTES:
             raise ValueError(
                 f"SLH-DSA public key must be {SLH_DSA_PUBLIC_KEY_BYTES} bytes, "
@@ -264,6 +309,7 @@ class SlhDsaSigner:
 
     @classmethod
     def generate(cls, domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT) -> "SlhDsaSigner":
+        _require_slh_dsa()
         # liboqs generates the keypair; we extract public + secret bytes
         # and store them for reuse via the `sign` method below.
         signer = oqs.Signature(_SLH_DSA_ALG)
@@ -272,6 +318,7 @@ class SlhDsaSigner:
         return cls(public_key=public_key, secret_key=secret_key, domain=domain)
 
     def sign(self, message: bytes) -> bytes:
+        _require_slh_dsa()
         # Import the secret key into a fresh oqs.Signature instance and
         # sign. liboqs binds the secret key to the signer object at import
         # time; each sign() call is a stateless operation over the bound key.
@@ -297,7 +344,11 @@ def verify_slh_dsa(
 
     Returns False on any error rather than raising. Rejects signatures of
     wrong length up front to avoid liboqs-internal errors on malformed input.
+    Returns False if SLH-DSA is not available in this build — the caller
+    treating this as "signature does not verify" is compliance-correct.
     """
+    if not SLH_DSA_AVAILABLE:
+        return False
     if len(signature) != SLH_DSA_SIGNATURE_BYTES:
         return False
     if len(public_key_bytes) != SLH_DSA_PUBLIC_KEY_BYTES:
