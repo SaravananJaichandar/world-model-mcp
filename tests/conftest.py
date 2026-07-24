@@ -36,6 +36,7 @@ _AUDIT_CHAIN_TEST_MODULES = frozenset({
     "tests/test_v0130_proof_apis.py",
     "tests/test_v0130_proof_mcp_tools.py",
     "tests/test_pin_annotation_e2e.py",
+    "tests/test_pin_annotation_verifier.py",
     "tests/test_audit_dump_export.py",
     "tests/test_etch_verify.py",
     "tests/test_etch_verify_subprocess_e2e.py",
