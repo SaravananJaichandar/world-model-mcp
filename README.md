@@ -696,6 +696,37 @@ Nine substantive changes in the v0.12.0 umbrella release plus the v0.12.12 adver
 
 ---
 
+## Compared to other agent-memory + agent-audit projects
+
+Head-to-head positioning against eight named peers on the audit / signing / anchoring dimensions the agent-memory space is converging on. Every Etch cell carries a provenance flag: `own` = measured / observed in the shipped product; `cited` = pulled from the competitor's own public landing, repo, or press.
+
+Source of truth for this table lives in the hosted service repo: [world-model-mcp-hosted/src/etch/competitor_matrix.py](https://github.com/SaravananJaichandar/etch/blob/main/src/etch/competitor_matrix.py). Update in both places if you change either.
+
+| | Etch (this repo + hosted) | Mem0 | Letta | agentmemory | Unicity AOS | Repowise | Trinitite | Caura | FailproofAI |
+|---|---|---|---|---|---|---|---|---|---|
+| Signature scheme | **Ed25519 + SLH-DSA-SHA2-128f (hybrid)** `[own]` | None (encryption at rest only) | None | None | BLAKE3 hash-chain | Deterministic signals (no signing) | Signed + hash-chained (algo not disclosed) | None | None disclosed |
+| Post-quantum ready | **Yes (SLH-DSA, NIST FIPS 205)** `[own]` | No | No | No | No (BLAKE3 hash only) | No | No disclosed | No | No |
+| Offline reference verifier | **etch-verify CLI, streaming, ships with PyPI package** `[own]` | No | No | No | Not disclosed | No (SaaS-only) | Browser-based verifier | No | No |
+| Attestation cadence enforcement | **Scheduled systemd timer + on-demand verify** `[own]` | No | No | No | Not disclosed | No | Scheduled attestation runs | No | No |
+| Framework mapping (Article / control IDs) | **EU AI Act Art. 12-15, SOC 2 CC6.6/7.2/7.3, ISO 27001 A.12.4/A.14.2** `[own]` | SOC 2 + HIPAA (badges, no per-control mapping) | Not disclosed | No | Not disclosed | EU AI Act (negative-space claim) | Per-Article citations (EU AI Act, SOC 2, SR 11-7) | SOC 2 in-progress badge | SOC 2 enterprise tier only |
+| Drift detection | **Per-epoch chain integrity + attestation trend** `[own]` | No | Success-rate + error tracking | No | Not disclosed | Code-health score deltas | Deterministic replay + risk-score deltas | No | Evaluator score deltas |
+| Annotation support (signed human notes in-chain) | **pin_annotation MCP tool, signed into same chain** `[own]` | No | No | No | Not disclosed | No | Not disclosed | No | No |
+| Browser verifier | **Yes, chain-integrity widget on /auditor/&lt;slug&gt;** `[own]` | No | No | No | Not disclosed | No | Yes | No | No |
+| Share link (auditor access, no login) | **Yes, expiring share tokens (bs_ prefix, 30d max)** `[own]` | No | No | No | Not disclosed | No | Yes, expiring auditor access | No | No |
+| External anchor (independent witness log) | **Dual: Sigstore Rekor + Bitcoin OpenTimestamps (public, opt-out per project)** `[own]` | No | No | No | Internal hash-chain only (no external log) | No | Not disclosed | No | No |
+| OSS license | **Apache 2.0 (world-model-mcp)** `[own]` | Apache 2.0 | Apache 2.0 | Apache 2.0 | Not disclosed | AGPL v3 (core) | No OSS | Apache 2.0 | No OSS |
+| GitHub stars | Snapshot via etch.systems/api/oss-stats `[cited]` | 61.6k `[cited]` | 23.9k `[cited]` | 24.9k `[cited]` | 7.1k `[cited]` | 4.2k `[cited]` | No public repo | 373 `[cited]` | No public repo |
+| Public funding | **Bootstrapped** `[own]` | $24.5M `[cited]` | $10M `[cited]` | Not disclosed | $3M seed Feb 2026 `[cited]` | Not disclosed | Not disclosed | Not disclosed | Not disclosed |
+| Compliance posture (as claimed on landing) | **SOC 2 Type I in progress (Aug 2026 target)** `[own]` | SOC 2 + HIPAA (badges on trust subdomain) | Not disclosed | No compliance posture | No compliance posture | No SOC 2; EU AI Act negative-space claim | Per-Article compliance framing | SOC 2 in-progress badge | SOC 2 enterprise-tier |
+
+**How to read this table**:
+- Bold Etch cells describe mechanisms shipped in this repo (OSS) + the hosted service (etch.systems).
+- Peer cells are cited from each competitor's public landing / repo / press. Not our own measurement.
+- `[own]` on an Etch cell means we measured / observed the mechanism ourselves. `[cited]` means the value came from a third-party source.
+- Only the audit / signing / anchoring dimensions are in this table. General memory features (retrieval accuracy, adapter breadth, LLM support) are covered in the [Features](#features) section above.
+
+---
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for:
