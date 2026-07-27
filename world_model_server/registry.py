@@ -30,12 +30,30 @@ class ProjectRegistry:
 
     @classmethod
     def _raw_load(cls) -> Dict[str, Any]:
-        """Load raw JSON without normalization."""
+        """Load raw JSON without normalization.
+
+        Returns an empty dict on ANY failure that would leave a caller
+        with no usable state anyway: missing file, unreadable JSON,
+        or file-system errors (PermissionError, IsADirectoryError,
+        FileNotFoundError, etc. all inherit from OSError). Callers
+        must treat "empty registry" as a valid state.
+
+        Suppressing errors is safe here because the registry is
+        best-effort discovery metadata, not authoritative data.
+        """
         if not REGISTRY_FILE.exists():
             return {}
         try:
             return json.loads(REGISTRY_FILE.read_text())
         except (json.JSONDecodeError, OSError):
+            # OSError covers PermissionError, IsADirectoryError,
+            # NotADirectoryError, FileNotFoundError, and any other
+            # transient FS issue. Log at DEBUG so operators can trace
+            # if they need to, but never crash the caller.
+            logger.debug(
+                "registry raw_load failed, returning empty",
+                exc_info=True,
+            )
             return {}
 
     @classmethod
@@ -69,21 +87,47 @@ class ProjectRegistry:
     def register(
         cls, project_name: str, db_path: str, project_id: Optional[str] = None
     ) -> None:
-        """Add a project to the registry."""
-        REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
-        raw = cls._raw_load()
-        raw[project_name] = {"db_path": db_path, "project_id": project_id}
-        REGISTRY_FILE.write_text(json.dumps(raw, indent=2))
+        """Add a project to the registry.
+
+        Fails soft (logs a warning, returns) on any file-system error
+        so that a locked-down HOME or read-only mount doesn't crash
+        the caller. Registry is best-effort discovery metadata.
+        """
+        try:
+            REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
+            raw = cls._raw_load()
+            raw[project_name] = {"db_path": db_path, "project_id": project_id}
+            REGISTRY_FILE.write_text(json.dumps(raw, indent=2))
+        except OSError:
+            logger.warning(
+                "registry register failed for %s (registry write refused); "
+                "project will not appear in cross-project search",
+                project_name,
+                exc_info=True,
+            )
+            return
         logger.info(f"Registered project: {project_name} -> {db_path} (id={project_id})")
 
     @classmethod
     def unregister(cls, project_name: str) -> None:
-        """Remove a project from the registry."""
+        """Remove a project from the registry.
+
+        Fails soft on file-system errors, same as register().
+        """
         raw = cls._raw_load()
-        if project_name in raw:
+        if project_name not in raw:
+            return
+        try:
             del raw[project_name]
             REGISTRY_FILE.write_text(json.dumps(raw, indent=2))
-            logger.info(f"Unregistered project: {project_name}")
+        except OSError:
+            logger.warning(
+                "registry unregister failed for %s (registry write refused)",
+                project_name,
+                exc_info=True,
+            )
+            return
+        logger.info(f"Unregistered project: {project_name}")
 
     @classmethod
     def list_projects(cls) -> List[Dict[str, Any]]:
