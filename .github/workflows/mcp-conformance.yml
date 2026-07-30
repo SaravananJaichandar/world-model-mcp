@@ -67,15 +67,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
-      # MCPJam CLI pinned to 3.15.2 (verified locally against
-      # world-model-mcp on 2026-07-23: 30 tools discovered, all checks
-      # ok, exit 0). Bump this pin deliberately in a follow-up PR when
-      # MCPJam releases a new version.
+      # MCPJam CLI pinned to 3.16.0 (bumped from 3.15.2 on 2026-07-30
+      # after 3.15.2 broke on `import buildEnvironmentOperation` from
+      # `@mcpjam/sdk/platform` — the SDK export was removed transitively
+      # via npx resolution after the CI last passed 2026-07-27. 3.16.0
+      # was released 2026-07-29 and ships with a consistent SDK.
+      # Bump this pin deliberately in a follow-up PR when MCPJam
+      # releases a new version.
       - name: MCPJam server doctor
         run: |
           set -euo pipefail
           TMPDB=$(mktemp -d)
-          npx -y @mcpjam/cli@3.15.2 server doctor \
+          npx -y @mcpjam/cli@3.16.0 server doctor \
             --transport stdio \
             --command python3 \
             --args -m \
@@ -148,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           TMPDB=$(mktemp -d)
-          npx -y @mcpjam/cli@3.15.2 server validate \
+          npx -y @mcpjam/cli@3.16.0 server validate \
             --transport stdio \
             --command python3 \
             --args -m \
