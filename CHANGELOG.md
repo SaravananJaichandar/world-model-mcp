@@ -13,7 +13,7 @@ For the current release, install instructions, and positioning, see [README.md](
 - **13 regression tests in `tests/test_v0156_delete_purge_semantics.py`.** Locks every axis of the fix: return-string honesty, delete-leaves-row-by-design, purge-actually-removes-row, purge-fires-FTS-trigger, `purge_fact` return-code semantics, and both field descriptions matching the shipped behavior.
 - **CLI install→signup nudge in `world_model_server/cli.py`.** One-line pointer to the hosted Etch notary at `world-model setup` and `world-model demo`. Suppressible with `WORLD_MODEL_NO_NUDGE=1` (mirrors the existing `WORLD_MODEL_NO_PROMPT` telemetry opt-out). Deliberately NOT wired into the MCP stdio server path: that stdout is JSON-RPC and a nudge there would corrupt the protocol. 4 regression tests in `tests/test_v0156_hosted_notary_nudge.py`.
 - **README.md gains a "Next (optional)" pointer after the pip-install block** to the hosted Etch companion for auditor-verifiable chains without infra to run.
-- **Credits DanceNitra/agora** for the measured reproduction script and honest matched-comparison methodology on openclaw#37 that motivated the delete/purge two-primitive design.
+- **Credits @DanceNitra** for the measured reproduction script and honest matched-comparison methodology in #37 that motivated the delete/purge two-primitive design.
 
 ## What's new in v0.15.5
 

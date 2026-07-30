@@ -1,6 +1,6 @@
 """
 Regression lock for the delete/purge two-primitive design shipped in
-response to DanceNitra/agora openclaw#37 (world-model-mcp).
+response to DanceNitra in #37 on this repo.
 
 Measured finding (their reproduction, we replicate the same shape here):
 `WorldModelMemoryBackend.delete()` marked facts invalid but left rows on
@@ -51,7 +51,7 @@ class TestDeleteReturnStringHonest:
         msg = await backend.delete("test-key")
         assert "Deleted memory" not in msg, (
             "return string must not claim 'Deleted' when only invalidating; "
-            "that was the exact regression DanceNitra flagged in openclaw#37"
+            "that was the exact regression DanceNitra flagged in #37"
         )
 
     @pytest.mark.asyncio
@@ -124,7 +124,7 @@ class TestPurgePrimitive:
             row = await cursor.fetchone()
             assert row is None, (
                 "purge() must physically remove the row; if this fails, "
-                "the fix for openclaw#37 has regressed"
+                "the fix for #37 has regressed"
             )
 
     @pytest.mark.asyncio

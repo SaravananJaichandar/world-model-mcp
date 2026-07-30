@@ -176,7 +176,7 @@ class WorldModelMemoryBackend(BetaAbstractMemoryTool):  # type: ignore
 
         Callers who need actual row-level erasure (GDPR right-to-erasure,
         HIPAA purge, ephemeral credential cleanup) must call `purge`
-        instead. See DanceNitra/agora openclaw#37 for the measured
+        instead. See DanceNitra in #37 for the measured
         distinction that motivated the two-primitive design.
         """
         key = _normalize_path(path)
@@ -200,7 +200,7 @@ class WorldModelMemoryBackend(BetaAbstractMemoryTool):  # type: ignore
         must not remain retrievable" is the compliance requirement rather
         than "mark invalid."
 
-        Regression lock: DanceNitra/agora openclaw#37 measured that
+        Regression lock: DanceNitra in #37 measured that
         `delete()` was retrievability-after-delete because it only
         invalidated. This method is the purpose-built erase primitive
         that matches their `forget_subject` shape.

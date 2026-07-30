@@ -1146,7 +1146,7 @@ class KnowledgeGraph:
         this id existed. This lets callers distinguish "purged" from
         "was already absent" for signed-purge-event audit records.
 
-        Regression lock: DanceNitra/agora openclaw#37 (world-model-mcp)
+        Regression lock: DanceNitra in #37 (world-model-mcp)
         measured that `delete()` was retrievability-after-delete because
         it only invalidated. Two-primitive design (invalidate + purge)
         resolves the semantic gap; see also
