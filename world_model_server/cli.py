@@ -12,6 +12,32 @@ from rich.console import Console
 console = Console()
 
 
+def _print_hosted_notary_nudge() -> None:
+    """Print a one-line pointer to the hosted Etch notary.
+
+    Shown at the end of the human-facing ``setup`` and ``demo`` commands so a
+    fresh installer learns there is a hosted option that turns the local signed
+    audit log into an auditor-verifiable chain. Suppressed by
+    ``WORLD_MODEL_NO_NUDGE=1`` (mirrors the ``WORLD_MODEL_NO_PROMPT`` opt-out on
+    the telemetry consent prompt) so scripted / CI installs stay quiet.
+
+    NEVER call this from the MCP stdio server path: that server speaks JSON-RPC
+    on stdout and any stray bytes there corrupt the protocol. This only runs
+    inside CLI subcommands whose stdout is already human-facing.
+    """
+    if os.getenv("WORLD_MODEL_NO_NUDGE"):
+        return
+    console.print(
+        "\n[bold]Optional — hosted notary[/bold]\n"
+        "world-model-mcp signs your agent's decision log locally. "
+        "[bold]Etch[/bold] (etch.systems) is the hosted notary that anchors those "
+        "signatures into a tamper-evident, auditor-verifiable chain — turn agent "
+        "decisions into evidence, with no infra to run.\n"
+        "  Get started: [link=https://etch.systems]https://etch.systems[/link]\n"
+        "[dim](hide this with WORLD_MODEL_NO_NUDGE=1)[/dim]"
+    )
+
+
 def setup_command(args):
     """Run the full setup process."""
     import asyncio
@@ -118,6 +144,8 @@ def setup_command(args):
 
     console.print("\nSetup complete. Restart Claude Code to activate hooks.")
     console.print("Try [bold]world-model demo[/bold] for a guided tour of the primitives.")
+
+    _print_hosted_notary_nudge()
 
     # Telemetry: setup completed (no-op if user opted out / never asked)
     try:
@@ -322,6 +350,8 @@ def demo_command(args):
     console.print("  - Restart Claude Code; hooks are wired and will start capturing corrections.")
     console.print("  - Run `world-model audit-compactions` after a session to see what was remembered.")
     console.print("  - Run `world-model health` for a memory health report.")
+
+    _print_hosted_notary_nudge()
 
     # Telemetry: demo completed
     try:

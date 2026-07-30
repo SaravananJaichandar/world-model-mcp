@@ -130,6 +130,8 @@ python -m world_model_server.cli setup
 # Done. The world model is pre-populated and active.
 ```
 
+**Next (optional):** turn the local signed audit log into an auditor-verifiable chain with the hosted [**Etch**](https://etch.systems) notary — KMS-backed keys, public transparency log, external anchoring, and a share link for auditors, with no infra to run. See [Hosted companion: Etch](#hosted-companion-etch).
+
 ### Option 3: HTTP transport for remote / MCP-tunnel deployment
 
 ```bash
