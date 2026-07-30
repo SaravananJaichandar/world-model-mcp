@@ -1104,7 +1104,15 @@ class KnowledgeGraph:
             return result
 
     async def invalidate_fact(self, fact_id: str, invalid_at: Optional[datetime] = None) -> None:
-        """Mark a fact as no longer true."""
+        """Mark a fact as no longer true (soft-delete).
+
+        The row remains in the `facts` table and stays retrievable via any
+        query that doesn't filter on `invalid_at`. This is intentional for
+        audit-preserving lifecycle semantics (the chain of what was ever
+        believed should not be silently rewritten). Callers who need actual
+        row-level erasure for GDPR-style right-to-erasure or HIPAA retention
+        purge should call `purge_fact` instead.
+        """
         if invalid_at is None:
             invalid_at = datetime.now()
 
@@ -1113,6 +1121,43 @@ class KnowledgeGraph:
                 "UPDATE facts SET invalid_at = ? WHERE id = ?", (invalid_at.isoformat(), fact_id)
             )
             await db.commit()
+
+    async def purge_fact(self, fact_id: str) -> bool:
+        """Physically remove a fact from disk (hard-delete).
+
+        Distinct from `invalidate_fact` (which marks the row invalid but
+        leaves it retrievable). This calls `DELETE FROM facts WHERE id = ?`
+        which fires the `facts_fts` sync trigger, removing the row from
+        both the primary table AND the full-text-search index. After this
+        returns True, no query path can surface the fact again.
+
+        Use for:
+          - GDPR Article 17 right-to-erasure requests
+          - HIPAA retention window purges
+          - Ephemeral credential cleanup
+          - Any case where "the fact must not remain retrievable" is the
+            actual compliance requirement, not just "mark invalid"
+
+        Do NOT use for normal supersession or correction workflows; those
+        should call `invalidate_fact` to preserve the audit chain of what
+        the system ever believed.
+
+        Returns True if a row was actually removed; False if no fact with
+        this id existed. This lets callers distinguish "purged" from
+        "was already absent" for signed-purge-event audit records.
+
+        Regression lock: DanceNitra/agora openclaw#37 (world-model-mcp)
+        measured that `delete()` was retrievability-after-delete because
+        it only invalidated. Two-primitive design (invalidate + purge)
+        resolves the semantic gap; see also
+        `memory_backend.WorldModelMemoryBackend.purge`.
+        """
+        async with aiosqlite.connect(self.facts_db) as db:
+            cursor = await db.execute(
+                "DELETE FROM facts WHERE id = ?", (fact_id,)
+            )
+            await db.commit()
+            return cursor.rowcount > 0
 
     # ============================================================================
     # Constraint Operations

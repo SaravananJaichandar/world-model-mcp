@@ -166,13 +166,53 @@ class WorldModelMemoryBackend(BetaAbstractMemoryTool):  # type: ignore
         return f"Inserted into {path} at line {insert_line}"
 
     async def delete(self, path: str) -> str:
-        """Delete memory at a path (invalidates the Fact)."""
+        """Invalidate memory at a path (soft-delete).
+
+        Marks the underlying Fact as no longer true (`invalid_at` timestamp
+        is set) but leaves the row on disk. The fact remains retrievable via
+        any query that doesn't filter on `invalid_at`, which is intentional
+        for audit-preserving lifecycle semantics: the chain of what the
+        system ever believed should not be silently rewritten.
+
+        Callers who need actual row-level erasure (GDPR right-to-erasure,
+        HIPAA purge, ephemeral credential cleanup) must call `purge`
+        instead. See DanceNitra/agora openclaw#37 for the measured
+        distinction that motivated the two-primitive design.
+        """
         key = _normalize_path(path)
         fact = await self._latest_fact_for(key)
         if not fact:
             return f"No memory at {path}"
         await self.kg.invalidate_fact(fact.id)
-        return f"Deleted memory at {path}"
+        return f"Invalidated memory at {path} (fact remains retrievable; call purge() for row-level erasure)"
+
+    async def purge(self, path: str) -> str:
+        """Physically remove memory at a path (hard-delete).
+
+        Distinct from `delete` / `invalidate_fact`. This calls
+        `knowledge_graph.purge_fact` which issues `DELETE FROM facts` and
+        fires the `facts_fts` sync trigger, removing the row from both
+        the primary table AND the full-text-search index. After this
+        returns, no query path can surface the fact again.
+
+        Use for GDPR Article 17 right-to-erasure requests, HIPAA retention
+        purges, ephemeral credential cleanup, or any case where "the fact
+        must not remain retrievable" is the compliance requirement rather
+        than "mark invalid."
+
+        Regression lock: DanceNitra/agora openclaw#37 measured that
+        `delete()` was retrievability-after-delete because it only
+        invalidated. This method is the purpose-built erase primitive
+        that matches their `forget_subject` shape.
+        """
+        key = _normalize_path(path)
+        fact = await self._latest_fact_for(key)
+        if not fact:
+            return f"No memory at {path}"
+        removed = await self.kg.purge_fact(fact.id)
+        if removed:
+            return f"Purged memory at {path} (row removed from disk; not retrievable)"
+        return f"No memory at {path} (already absent)"
 
     async def rename(self, old_path: str, new_path: str) -> str:
         """Move memory from old_path to new_path."""

@@ -141,14 +141,23 @@ class Fact(BaseModel):
             "Storage-vs-influence policy: 'observed' (logged but not "
             "trusted), 'pending_review' (queued for promotion), 'approved' "
             "(trusted for planning), 'blocked' (retained for audit but "
-            "excluded from planning). NULL = legacy row / treated as approved."
+            "excluded from planning). NULL = legacy row / treated as approved. "
+            "Consumer wiring (planning-query filter that respects this field) "
+            "is tracked separately; a caller reading only this schema should "
+            "verify their retrieval path applies the filter."
         ),
     )
     expires_at: Optional[datetime] = Field(
         None,
         description=(
-            "Hard expiry timestamp. Rows past this time should be dropped, "
-            "not just decayed. NULL = never expires."
+            "Hard expiry timestamp. Rows past this time are intended to be "
+            "physically dropped via a background expiry sweep, not just "
+            "decayed in confidence. NULL = never expires. "
+            "Consumer wiring (the expiry sweep worker that reads this field "
+            "and calls purge_fact) is tracked separately and is not "
+            "guaranteed on-by-default in the shipped wheel; a caller with a "
+            "retention requirement should either invoke purge explicitly at "
+            "expiry time or verify the sweep is enabled in their deployment."
         ),
     )
 
