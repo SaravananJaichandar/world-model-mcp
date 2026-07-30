@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload doctor artifact
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: mcpjam-doctor-json
           path: /tmp/mcpjam-doctor.json
