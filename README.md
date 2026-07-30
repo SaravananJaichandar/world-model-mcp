@@ -4,7 +4,7 @@
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.15.5.** Streaming offline reference verifier (`ijson`-based, O(single row) memory), FIPS 205 SLH-DSA known-answer tests, adversarial-input fuzz coverage on the verify path. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.15.6.** New `purge()` primitive that hard-deletes a fact (row + FTS index) for GDPR Article 17 right-to-erasure and HIPAA retention purges, distinct from soft-delete `invalidate` which preserves the audit chain. `delete()` return string now honestly reports "Invalidated" and points at `purge()` for row-level erasure. Field descriptions on `expires_at` and `influence_state` rewritten to note the consumer-wiring gap explicitly. CLI `world-model setup` + `world-model demo` gain a one-line pointer to the hosted [Etch](https://etch.systems) notary, suppressible with `WORLD_MODEL_NO_NUDGE=1`. Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
