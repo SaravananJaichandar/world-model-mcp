@@ -17,10 +17,10 @@ jobs:
   run-benchmark:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -34,7 +34,7 @@ jobs:
           cat results.json | python -c "import json,sys; d=json.load(sys.stdin); print(f'accuracy={d[\"accuracy\"]:.3f} passed={d[\"passed\"]}/{d[\"total\"]}')"
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: benchmark-results
           path: results.json
