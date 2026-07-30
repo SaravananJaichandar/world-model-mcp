@@ -18,7 +18,16 @@ classifiers = [
 ]
 
 dependencies = [
-    "mcp>=1.0.0",
+    # mcp: pinned to <1.29.0 (bumped 2026-07-30) after 1.29.0 and 2.0.0
+    # both landed on 2026-07-28 and dropped the `Server.list_tools()`
+    # decorator API this server uses at world_model_server/server.py:58.
+    # CI failed on a fresh 2.0.0 install with:
+    #   AttributeError: 'Server' object has no attribute 'list_tools'
+    # Bump this pin deliberately in a follow-up PR after migrating
+    # server.py to the newer SDK's tool-registration surface (likely
+    # FastMCP or an explicit register-tool call). Current server code
+    # verified working against mcp 1.25.0 locally.
+    "mcp>=1.0.0,<1.29.0",
     "anthropic>=0.40.0",
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
