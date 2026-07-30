@@ -4,6 +4,11 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.15.7
+
+- **Mutation-path cache invalidation.** `KnowledgeGraph.purge_fact`, `invalidate_fact`, and `supersede_fact` now call `self._cache_invalidate("facts:")` after commit, matching the existing pattern on `create_fact` and `apply_fact_decay`. Without this, a same-instance `query_facts` following one of these mutations could return the pre-mutation `QueryFactResult` from the in-memory cache until the TTL expired. Callers whose flow was `query → mutate → verify-with-query` on a single `KnowledgeGraph` instance (right-to-erasure verification in particular) may have seen the mutation as pending in-process; fresh-instance queries were unaffected. Storage-layer behavior was already correct in v0.15.6.
+- **7 regression tests in `tests/test_v0157_cache_invalidation_on_mutations.py`.** Locks the same-instance query-mutate-query sequence for all three mutation paths, verifies the public `WorldModelMemoryBackend.purge()` return string is honest under this repro, confirms invalidated rows remain reachable via `current_only=False` for audit-chain reconstruction, and locks the narrow `facts:` prefix scope so mutations do not over-clear unrelated cache lanes. Complements the v0.15.6 storage-layer regression suite in `tests/test_v0156_delete_purge_semantics.py`.
+
 ## What's new in v0.15.6
 
 - **`WorldModelMemoryBackend.purge(path)` primitive.** New method that hard-deletes the underlying fact: calls `KnowledgeGraph.purge_fact` which issues `DELETE FROM facts` and fires the existing `facts_fts` sync trigger, removing the row from both the primary table and the full-text-search index. Distinct from `delete()` (which is soft-delete / invalidate). Use for GDPR Article 17 right-to-erasure requests, HIPAA retention window purges, ephemeral credential cleanup, and any case where "the fact must not remain retrievable" is the actual compliance requirement rather than "mark invalid."

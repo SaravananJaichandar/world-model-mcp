@@ -1121,6 +1121,7 @@ class KnowledgeGraph:
                 "UPDATE facts SET invalid_at = ? WHERE id = ?", (invalid_at.isoformat(), fact_id)
             )
             await db.commit()
+        self._cache_invalidate("facts:")
 
     async def purge_fact(self, fact_id: str) -> bool:
         """Physically remove a fact from disk (hard-delete).
@@ -1157,7 +1158,9 @@ class KnowledgeGraph:
                 "DELETE FROM facts WHERE id = ?", (fact_id,)
             )
             await db.commit()
-            return cursor.rowcount > 0
+            removed = cursor.rowcount > 0
+        self._cache_invalidate("facts:")
+        return removed
 
     # ============================================================================
     # Constraint Operations
@@ -2010,7 +2013,9 @@ class KnowledgeGraph:
                 (now, fact_id),
             )
             await db.commit()
-            return cursor.rowcount > 0
+            superseded = cursor.rowcount > 0
+        self._cache_invalidate("facts:")
+        return superseded
 
     async def get_fact_by_id(self, fact_id: str) -> Optional[Dict[str, Any]]:
         """Fetch a single fact row by id, returns None if missing."""
