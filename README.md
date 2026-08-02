@@ -4,7 +4,7 @@
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.15.7.** Mutation-path cache invalidation fix: `purge_fact`, `invalidate_fact`, and `supersede_fact` now call `_cache_invalidate("facts:")` after commit, matching the existing pattern on `create_fact` and `apply_fact_decay`. Without this, a same-instance `query_facts` following one of these mutations could return the pre-mutation cached result until the TTL expired; storage-layer behavior was already correct in v0.15.6. 7 regression tests lock the same-instance query-mutate-query sequence across all three paths. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.15.8.** Docs-only refresh. No code changes. Adds a "Which one is right for me?" guide in the README to help a first-time reader decide whether the local `world-model-mcp` server is enough or whether they also want the hosted [etch.systems](https://etch.systems) companion for signed audit evidence. Every code path shipped in v0.15.7 continues to work identically. Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -211,6 +211,16 @@ Running `world-model-mcp` locally? [**Etch** (etch.systems)](https://etch.system
 - Free tier, pay-as-you-grow beyond that
 
 Same crypto primitives, same audit-log schema, zero source changes to the shipped OSS. Skip if you're running standalone.
+
+### Which one is right for me?
+
+| Situation | Route |
+|---|---|
+| I want persistent memory for my local AI coding agent | `world-model-mcp` (this repo, MIT) |
+| I want to prove agent decisions to a regulator six months later | [etch.systems](https://etch.systems) |
+| I want signed evidence bundles a court can self-authenticate | [etch.systems](https://etch.systems) |
+| I want cross-team or cross-vendor federation of signed audit history | [etch.systems](https://etch.systems) |
+| I want to try both | Start local with `world-model-mcp`; add Etch when you need signed evidence for someone else to verify |
 
 ---
 
