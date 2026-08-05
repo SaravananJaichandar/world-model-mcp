@@ -1,5 +1,7 @@
 # World Model MCP
 
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.SaravananJaichandar%2Fworld-model-mcp.svg)](https://mcptoplist.com/server/io.github.SaravananJaichandar%2Fworld-model-mcp)
+
 **Persistent memory + optional signed audit for AI coding agents.**
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
