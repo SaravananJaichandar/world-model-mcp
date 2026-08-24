@@ -143,7 +143,7 @@ def test_f1_setup_no_prompt_skips_telemetry_question(tmp_path):
     """`world-model setup --no-prompt` must not block waiting for input."""
     project = tmp_path / "proj"
     project.mkdir()
-    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1"}
+    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1", "WORLD_MODEL_SKIP_NOTARY_BEAT": "1"}
     result = subprocess.run(
         [sys.executable, "-m", "world_model_server.cli", "setup",
          "--project-dir", str(project), "--no-prompt"],
@@ -161,7 +161,7 @@ def test_f2_demo_runs_on_fresh_project(tmp_path):
     """`world-model demo` on a fresh project initializes the KG and exits 0."""
     project = tmp_path / "fresh"
     project.mkdir()
-    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1"}
+    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1", "WORLD_MODEL_SKIP_NOTARY_BEAT": "1"}
     result = subprocess.run(
         [sys.executable, "-m", "world_model_server.cli", "demo",
          "--project-dir", str(project)],
@@ -179,7 +179,7 @@ def test_f2_demo_runs_on_fresh_project(tmp_path):
 def test_f2_demo_creates_world_model_dir(tmp_path):
     project = tmp_path / "proj2"
     project.mkdir()
-    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1"}
+    env = {**os.environ, "HOME": str(tmp_path), "WORLD_MODEL_NO_PROMPT": "1", "WORLD_MODEL_SKIP_NOTARY_BEAT": "1"}
     subprocess.run(
         [sys.executable, "-m", "world_model_server.cli", "demo",
          "--project-dir", str(project)],

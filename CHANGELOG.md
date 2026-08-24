@@ -4,6 +4,12 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.2
+
+- **CI + test hardening: `WORLD_MODEL_SKIP_NOTARY_BEAT=1` env var opts out of the notary beat.** v0.16.1 fixed the crash on liboqs-without-SLH-DSA builds by catching the RuntimeError, but the `HybridSigner` import inside `_run_notary_beat` still triggered the `oqs` package's first-run liboqs build (60-180 seconds on a fresh HOME). That was enough to push the pre-existing `tests/test_v073_features.py::test_f2_demo_*` subprocess tests past their 240-second cap on some CI runners. v0.16.2 adds an env-var opt-out that short-circuits the beat before any oqs import happens, so integration tests and CI jobs that want a fast `world-model demo` can set `WORLD_MODEL_SKIP_NOTARY_BEAT=1` and skip the beat entirely. Users on the standard install path (env var unset) get the full notary beat unchanged.
+- **`tests/test_v073_features.py` now sets the env var** so the two demo subprocess tests complete in seconds regardless of the runner's liboqs cache state. The 5 dedicated notary-beat smoke tests in `tests/test_v0160_demo_notary_beat.py` continue to exercise the full beat (they run in-process, not via subprocess, and always warm the liboqs cache once at test-session start).
+- **v0.16.0 + v0.16.1 are being yanked from PyPI**; 0.16.2 is the release that stays. Existing installs of the yanked versions continue to work; new `pip install world-model-mcp` pulls 0.16.2.
+
 ## What's new in v0.16.1
 
 - **Hotfix: `world-model demo` now skips the notary beat gracefully when the local liboqs build lacks SLH-DSA.** v0.16.0 hard-required SLH-DSA-SHA2-128f (FIPS 205) for the notary beat, which crashed the demo on liboqs builds that were compiled without SLH-DSA (some minimal / CI liboqs builds ship only Falcon + MAYO). v0.16.1 catches the `SLH-DSA is not available` RuntimeError, prints a one-line skip banner naming the fix ("install liboqs >= 0.14 with SLH-DSA support"), and continues so the rest of the demo completes cleanly. Users on the standard `oqs` PyPI package get the full notary beat unchanged.

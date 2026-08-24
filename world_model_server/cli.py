@@ -13,23 +13,35 @@ console = Console()
 
 
 async def _run_notary_beat(console_local) -> bool:
-    """v0.16.0 notary beat: record 3 sample decisions, close a real
-    hybrid-signed epoch, verify VALID against the same manifest format
-    ``etch-verify`` and hosted ``/verify#`` consume, then mutate one
-    byte and re-verify to prove INVALID detection is live and offline.
+    """v0.16.0 notary beat, hardened in v0.16.1 (graceful SLH-DSA
+    skip) and v0.16.2 (opt-out env var to avoid the cold liboqs
+    build in CI + test environments).
 
-    Everything runs against a throwaway temp DB, zero signup, zero
-    token, zero network. Returns True on the expected VALID → INVALID
-    on tamper → VALID after restore sequence; False on any deviation
-    so the demo can surface it to the operator.
-
-    Honesty guard: the emitted receipt says "Signed into a tamper-
-    evident epoch. Verified locally: VALID." It never claims the
-    epoch is "anchored" (OSS demo has no external anchor) or
-    "attributed to you" (the ephemeral signer proves the record
-    existed at close_epoch time, not who created it). Anchoring +
-    attribution are the hosted upsell.
+    Set ``WORLD_MODEL_SKIP_NOTARY_BEAT=1`` to skip the beat entirely
+    without importing ``hybrid_signer`` (and therefore without
+    triggering the ``oqs`` package's first-run liboqs build, which
+    can take 60-180 seconds on a fresh HOME). Users on the standard
+    install path get the full beat unchanged; this flag exists so
+    integration tests + CI runners can time-bound the demo.
     """
+    if os.getenv("WORLD_MODEL_SKIP_NOTARY_BEAT"):
+        console_local.print(
+            "  [dim]Skipped[/dim] "
+            "(WORLD_MODEL_SKIP_NOTARY_BEAT is set)."
+        )
+        return True
+    # Below: the original notary beat body. Kept intact so warm
+    # runs (developer laptops with cached liboqs) get the full wow:
+    # a hybrid-signed epoch, VALID verify against the same manifest
+    # format ``etch-verify`` and hosted ``/verify#`` consume, then
+    # a one-byte tamper -> INVALID -> restore. Everything runs
+    # against a throwaway temp DB, zero signup, zero token, zero
+    # network. Honesty guard: the emitted receipt says "Signed into
+    # a tamper-evident epoch. Verified locally: VALID." It never
+    # claims the epoch is "anchored" (OSS demo has no external
+    # anchor) or "attributed to you" (the ephemeral signer proves
+    # the record existed at close_epoch time, not who created it).
+    # Anchoring + attribution are the hosted upsell.
     import base64
     import gzip
     import json
