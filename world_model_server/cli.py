@@ -42,6 +42,27 @@ async def _run_notary_beat(console_local) -> bool:
     from . import audit_dump, etch_verify, tamper_evident
     from .hybrid_signer import HybridSigner
 
+    # v0.16.1: graceful skip when this environment's liboqs was built
+    # without SLH-DSA. HybridSigner.generate() raises RuntimeError with
+    # the specific "SLH-DSA is not available" message from
+    # hybrid_signer._require_slh_dsa on those builds; the notary beat
+    # cannot run without post-quantum signing, so we print a clear
+    # skip banner and return True (the demo overall is still healthy).
+    try:
+        signer = HybridSigner.generate()
+    except RuntimeError as exc:
+        if "SLH-DSA is not available" in str(exc):
+            console_local.print(
+                "  [yellow]Skipped[/yellow] — this environment's "
+                "liboqs was built without SLH-DSA (FIPS 205). Install "
+                "liboqs >= 0.14 with SLH-DSA support to run the "
+                "hybrid-signed notary beat. Everything above still "
+                "works; only the notary beat needs post-quantum "
+                "signing."
+            )
+            return True
+        raise
+
     with tempfile.TemporaryDirectory(prefix="wm-notary-") as tmpdir:
         audit_db_path = Path(tmpdir) / "audit.db"
 
@@ -72,8 +93,6 @@ async def _run_notary_beat(console_local) -> bool:
                     row_payload=sample,
                 )
             await db.commit()
-
-            signer = HybridSigner.generate()
             await tamper_evident.close_epoch(db, signer)
             await db.commit()
 

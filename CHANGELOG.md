@@ -4,6 +4,13 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.1
+
+- **Hotfix: `world-model demo` now skips the notary beat gracefully when the local liboqs build lacks SLH-DSA.** v0.16.0 hard-required SLH-DSA-SHA2-128f (FIPS 205) for the notary beat, which crashed the demo on liboqs builds that were compiled without SLH-DSA (some minimal / CI liboqs builds ship only Falcon + MAYO). v0.16.1 catches the `SLH-DSA is not available` RuntimeError, prints a one-line skip banner naming the fix ("install liboqs >= 0.14 with SLH-DSA support"), and continues so the rest of the demo completes cleanly. Users on the standard `oqs` PyPI package get the full notary beat unchanged.
+- **Test suite updated.** `tests/test_v0160_demo_notary_beat.py` now uses `pytest.mark.skipif` to skip the SLH-DSA-dependent assertions on environments where liboqs was built without SLH-DSA, so CI on such runners passes cleanly rather than reporting a red build. The happy-path smoke test still runs everywhere and asserts True in both branches (fully-signed run OR graceful skip).
+- **Version pin refreshed in `server.json`.** The MCP-registry manifest at `server.json` was still pinned to 0.15.8 through the v0.16.0 release. Now correctly reads 0.16.1 alongside `pyproject.toml` + `world_model_server/__init__.py`.
+- **v0.16.0 is being yanked from PyPI** because installers on a liboqs build without SLH-DSA hit the crash on `world-model demo`. Existing 0.16.0 installs continue to work; new `pip install world-model-mcp` will pull 0.16.1.
+
 ## What's new in v0.16.0
 
 - **`world-model demo` now ends with a live notary beat: sign, verify VALID, tamper one byte, re-verify INVALID, restore.** Runs against a throwaway temp DB with zero signup, zero token, and zero network. Three sample decisions are recorded on a fresh audit chain, a hybrid signer (Ed25519 + SLH-DSA-SHA2-128f, FIPS 205) closes a real epoch over a real Merkle root, and the resulting manifest is handed to the same `etch-verify` verifier auditors use. The tamper beat mutates one byte of the first row_hash so the operator sees the chain-integrity check fail live, then restores it and re-verifies. Instant, offline, no anchoring. This is the aha moment that turns installers into activations.

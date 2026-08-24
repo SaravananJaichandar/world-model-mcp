@@ -6,7 +6,7 @@
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.16.0.** `world-model demo` now ends with a live notary beat: three sample decisions signed into a real hybrid-signed epoch (Ed25519 + SLH-DSA-SHA2-128f, FIPS 205), then verified against the same `etch-verify` manifest format auditors use, then tampered one byte to prove the chain-integrity check fails live, then restored. Zero signup, zero token, zero network; drops a `world-model-demo-receipt.json` in the current directory and emits a copy-paste `etch.systems/verify#<manifest>` URL. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.16.1.** `world-model demo` ends with a live notary beat: three sample decisions signed into a real hybrid-signed epoch (Ed25519 + SLH-DSA-SHA2-128f, FIPS 205), verified VALID, mutated one byte to prove tamper detection fires live (INVALID), then restored. Zero signup, zero token, zero network; drops a `world-model-demo-receipt.json` in the current directory and emits a copy-paste `etch.systems/verify#<manifest>` URL. v0.16.1 adds a graceful skip when the local liboqs build was compiled without SLH-DSA (rather than crashing the demo). Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Try it in 10 seconds
 

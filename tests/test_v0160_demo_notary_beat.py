@@ -38,6 +38,35 @@ from rich.console import Console
 from world_model_server import cli, etch_verify
 
 
+def _slh_dsa_available() -> bool:
+    """True when the local liboqs build supports SLH-DSA-SHA2-128f
+    (or the SPHINCS+-SHA2-128f-simple alias). CI runners built
+    without SLH-DSA skip the assertions that depend on the notary
+    beat actually running end-to-end. v0.16.1: the notary beat
+    itself skips gracefully on those environments; the smoke tests
+    are marked skipif so a red CI on a Falcon+MAYO-only liboqs
+    build does not mask real regressions.
+    """
+    try:
+        from world_model_server.hybrid_signer import HybridSigner
+        HybridSigner.generate()
+    except RuntimeError as exc:
+        if "SLH-DSA is not available" in str(exc):
+            return False
+        raise
+    return True
+
+
+requires_slh_dsa = pytest.mark.skipif(
+    not _slh_dsa_available(),
+    reason=(
+        "local liboqs build has no SLH-DSA; the notary beat skips "
+        "gracefully on this environment and there is nothing for "
+        "the assertion-dependent tests to check"
+    ),
+)
+
+
 def _run_beat_in_cwd(tmp_cwd: Path) -> tuple[bool, str]:
     """Run the notary beat with cwd rebased to ``tmp_cwd`` so the
     receipt lands where the test can find it, and return
@@ -58,6 +87,7 @@ def test_notary_beat_happy_path_returns_true(tmp_path):
     assert ok is True
 
 
+@requires_slh_dsa
 def test_notary_beat_writes_receipt_with_expected_shape(tmp_path):
     _, _ = _run_beat_in_cwd(tmp_path)
     receipt = tmp_path / "world-model-demo-receipt.json"
@@ -84,6 +114,7 @@ def test_notary_beat_writes_receipt_with_expected_shape(tmp_path):
     }
 
 
+@requires_slh_dsa
 def test_receipt_verifies_via_etch_verify_manifest(tmp_path):
     """End-to-end: the manifest the beat writes must verify cleanly
     through the same `etch_verify.verify_manifest` code path an
@@ -102,6 +133,7 @@ def test_receipt_verifies_via_etch_verify_manifest(tmp_path):
     )
 
 
+@requires_slh_dsa
 def test_console_output_carries_valid_invalid_restore_and_url(
     tmp_path,
 ):
@@ -116,6 +148,7 @@ def test_console_output_carries_valid_invalid_restore_and_url(
     assert "etch.systems/verify#" in output, output
 
 
+@requires_slh_dsa
 def test_receipt_manifest_is_tamper_evident_at_bit_level(tmp_path):
     """Regression guard for the tamper beat itself: mutating one
     byte of the persisted receipt's first row_hash MUST cause
