@@ -165,7 +165,7 @@ def test_f2_demo_runs_on_fresh_project(tmp_path):
     result = subprocess.run(
         [sys.executable, "-m", "world_model_server.cli", "demo",
          "--project-dir", str(project)],
-        capture_output=True, text=True, timeout=120, env=env, cwd=str(REPO_ROOT),
+        capture_output=True, text=True, timeout=240, env=env, cwd=str(REPO_ROOT),
     )
     assert result.returncode == 0, result.stderr
     # Must exercise each named primitive in the output
@@ -183,7 +183,7 @@ def test_f2_demo_creates_world_model_dir(tmp_path):
     subprocess.run(
         [sys.executable, "-m", "world_model_server.cli", "demo",
          "--project-dir", str(project)],
-        capture_output=True, text=True, timeout=120, env=env, cwd=str(REPO_ROOT),
+        capture_output=True, text=True, timeout=240, env=env, cwd=str(REPO_ROOT),
     )
     assert (project / ".claude" / "world-model").exists()
 

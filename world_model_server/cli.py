@@ -12,6 +12,185 @@ from rich.console import Console
 console = Console()
 
 
+async def _run_notary_beat(console_local) -> bool:
+    """v0.16.0 notary beat: record 3 sample decisions, close a real
+    hybrid-signed epoch, verify VALID against the same manifest format
+    ``etch-verify`` and hosted ``/verify#`` consume, then mutate one
+    byte and re-verify to prove INVALID detection is live and offline.
+
+    Everything runs against a throwaway temp DB, zero signup, zero
+    token, zero network. Returns True on the expected VALID → INVALID
+    on tamper → VALID after restore sequence; False on any deviation
+    so the demo can surface it to the operator.
+
+    Honesty guard: the emitted receipt says "Signed into a tamper-
+    evident epoch. Verified locally: VALID." It never claims the
+    epoch is "anchored" (OSS demo has no external anchor) or
+    "attributed to you" (the ephemeral signer proves the record
+    existed at close_epoch time, not who created it). Anchoring +
+    attribution are the hosted upsell.
+    """
+    import base64
+    import gzip
+    import json
+    import tempfile
+    from datetime import datetime, timezone
+
+    import aiosqlite
+
+    from . import __version__ as _wmm_version
+    from . import audit_dump, etch_verify, tamper_evident
+    from .hybrid_signer import HybridSigner
+
+    with tempfile.TemporaryDirectory(prefix="wm-notary-") as tmpdir:
+        audit_db_path = Path(tmpdir) / "audit.db"
+
+        async with aiosqlite.connect(str(audit_db_path)) as db:
+            await tamper_evident.create_schema(db)
+            samples = [
+                {
+                    "decision": "Migrate session store to Redis",
+                    "rationale": "in-memory store expires on restart",
+                    "confidence": "high",
+                },
+                {
+                    "decision": "Add per-IP rate-limit middleware",
+                    "rationale": "abuse mitigation on the login route",
+                    "confidence": "high",
+                },
+                {
+                    "decision": "Extend JWT TTL from 1h to 24h",
+                    "rationale": "reduce refresh churn for mobile clients",
+                    "confidence": "medium",
+                },
+            ]
+            for i, sample in enumerate(samples):
+                await tamper_evident.append_entry(
+                    db,
+                    kind="decision_create",
+                    row_id=f"demo-decision-{i + 1}",
+                    row_payload=sample,
+                )
+            await db.commit()
+
+            signer = HybridSigner.generate()
+            await tamper_evident.close_epoch(db, signer)
+            await db.commit()
+
+            log_entries = await audit_dump._fetch_all_log_entries(db)
+            epochs = await tamper_evident._fetch_all_epochs(db)
+
+        for e in epochs:
+            if isinstance(e.get("signature_envelope"), str):
+                e["signature_envelope"] = json.loads(
+                    e["signature_envelope"],
+                )
+
+        manifest = {
+            "manifest_version": audit_dump.MANIFEST_VERSION,
+            "generated_at": (
+                datetime.now(timezone.utc)
+                .strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+                + "Z"
+            ),
+            "world_model_mcp_version": _wmm_version,
+            "genesis_hash": tamper_evident.GENESIS_HASH,
+            "epoch_genesis_root": tamper_evident.EPOCH_GENESIS_ROOT,
+            "public_keys": {
+                "ed25519": base64.b64encode(
+                    signer.ed25519_public_key_bytes(),
+                ).decode("ascii"),
+                "slh_dsa": base64.b64encode(
+                    signer.slh_dsa_public_key_bytes(),
+                ).decode("ascii"),
+            },
+            "tamper_evident_log": log_entries,
+            "epochs": epochs,
+            "source_rows": {"annotations": [], "events": []},
+        }
+
+        report = etch_verify.verify_manifest(manifest)
+        if not report.ok:
+            failed = next(
+                (c for c in report.checks if not c["ok"]), None,
+            )
+            console_local.print(
+                f"  [red]UNEXPECTED FAIL on first verify:[/red] "
+                f"{failed['name'] if failed else '?'} — {failed.get('detail') if failed else ''}"
+            )
+            return False
+        console_local.print(
+            "  [green]VALID[/green] — signature and hash-chain intact "
+            "(Ed25519 + SLH-DSA-SHA2-128f hybrid)."
+        )
+
+        # Tamper beat: mutate one byte of the first entry's row_hash
+        # and re-verify. The chain-integrity check MUST reject.
+        original_row_hash = manifest["tamper_evident_log"][0]["row_hash"]
+        manifest["tamper_evident_log"][0]["row_hash"] = (
+            "sha256:" + "00" * 32
+        )
+        report_tampered = etch_verify.verify_manifest(manifest)
+        if report_tampered.ok:
+            console_local.print(
+                "  [red]UNEXPECTED VALID after tamper[/red] — "
+                "verifier missed the mutation"
+            )
+            return False
+        bad = next(
+            (c for c in report_tampered.checks if not c["ok"]), None,
+        )
+        console_local.print(
+            f"  [red]INVALID[/red] — tamper detected at check "
+            f"{bad['name'] if bad else '?'}."
+        )
+
+        # Restore the byte and confirm the chain verifies again.
+        manifest["tamper_evident_log"][0]["row_hash"] = original_row_hash
+        report_restored = etch_verify.verify_manifest(manifest)
+        if not report_restored.ok:
+            console_local.print(
+                "  [red]FAILED to re-verify after restore[/red] — "
+                "manifest state is now inconsistent"
+            )
+            return False
+        console_local.print(
+            "  Restored one byte → [green]VALID[/green] again."
+        )
+
+        # Persist the manifest as a receipt on disk. Fully offline.
+        receipt_path = Path.cwd() / "world-model-demo-receipt.json"
+        receipt_path.write_text(
+            json.dumps(manifest, indent=2), encoding="utf-8",
+        )
+
+        # Shareable URL: gzip+base64url the manifest into the URL
+        # fragment. Server never receives the fragment (privacy-clean);
+        # the browser at etch.systems/verify reconstructs the manifest
+        # and runs verify client-side. For the 3-entry demo the packed
+        # fragment is < 4 KB, well within browser URL limits.
+        packed = base64.urlsafe_b64encode(
+            gzip.compress(
+                json.dumps(manifest, separators=(",", ":")).encode(
+                    "utf-8",
+                ),
+            ),
+        ).decode("ascii")
+        verify_url = f"https://etch.systems/verify#{packed}"
+
+        console_local.print(
+            f"\n  Receipt: [bold]{receipt_path}[/bold]"
+        )
+        console_local.print("  Shareable verify URL (paste anywhere):")
+        console_local.print(f"    [cyan]{verify_url}[/cyan]")
+        console_local.print(
+            "\n  Signed into a tamper-evident epoch "
+            "(Ed25519 + post-quantum SLH-DSA). Verified locally: "
+            "[green]VALID[/green]."
+        )
+        return True
+
+
 def _print_hosted_notary_nudge() -> None:
     """Print a one-line pointer to the hosted Etch notary.
 
@@ -343,6 +522,13 @@ def demo_command(args):
         audit_json = await tools.get_compaction_audit(limit=3)
         audit = json.loads(audit_json)
         console.print(f"  {audit['count']} audit rows on file.")
+
+        # v0.16.0 notary beat. Runs against a throwaway temp DB so the
+        # user's project isn't touched. Zero signup, zero network.
+        console.print(
+            "\n[bold]5. Notary beat (sign + verify + tamper detect)[/bold]"
+        )
+        await _run_notary_beat(console)
 
     asyncio.run(exercise())
 

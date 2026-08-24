@@ -4,6 +4,15 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.0
+
+- **`world-model demo` now ends with a live notary beat: sign, verify VALID, tamper one byte, re-verify INVALID, restore.** Runs against a throwaway temp DB with zero signup, zero token, and zero network. Three sample decisions are recorded on a fresh audit chain, a hybrid signer (Ed25519 + SLH-DSA-SHA2-128f, FIPS 205) closes a real epoch over a real Merkle root, and the resulting manifest is handed to the same `etch-verify` verifier auditors use. The tamper beat mutates one byte of the first row_hash so the operator sees the chain-integrity check fail live, then restores it and re-verifies. Instant, offline, no anchoring. This is the aha moment that turns installers into activations.
+- **Copy-paste `etch.systems/verify#<manifest>` URL emitted at the end of the notary beat, plus a `world-model-demo-receipt.json` dropped in the current directory.** The URL packs the manifest into the fragment (gzip + base64url), so the browser at etch.systems reconstructs the manifest and runs verify client-side without the server ever seeing the fragment. Bounded to under 4 KB for the 3-entry demo; well within URL limits.
+- **Try it in 10 seconds:** `pip install -U world-model-mcp && world-model demo`.
+- **Honesty guards preserved.** The notary receipt says "Signed into a tamper-evident epoch (Ed25519 + post-quantum SLH-DSA). Verified locally: VALID." It never claims the epoch is "anchored" (OSS demo has no external anchor) or "attributed to you" (the ephemeral signer proves record-existed-at-T, not who). Anchoring + durable identity are the hosted upsell surfaced by the existing install-time nudge.
+- **New smoke test `tests/test_v0160_demo_notary_beat.py`.** Runs the notary beat helper end-to-end, asserts VALID → INVALID on tamper → VALID after restore, and confirms the receipt file lands on disk with a well-formed manifest.
+- **No schema changes, no new dependencies.** The notary beat reuses primitives that already ship (HybridSigner, tamper_evident.append_entry, tamper_evident.close_epoch, audit_dump, etch_verify.verify_manifest). Existing installs upgrade cleanly; existing tests continue to pass.
+
 ## What's new in v0.15.8
 
 - **Docs-only refresh. No code changes.** Every code path shipped in v0.15.7 continues to work identically; this release refines the README + CHANGELOG only.

@@ -2,9 +2,19 @@
 
 **Persistent memory + optional signed audit for AI coding agents.**
 
+> world-model-mcp is persistent memory plus a post-quantum-signed, offline-verifiable audit trail for AI coding agents (FIPS 205 hybrid Ed25519 + SLH-DSA), MIT-licensed and fully local.
+
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.15.8.** Docs-only refresh. No code changes. Adds a "Which one is right for me?" guide in the README to help a first-time reader decide whether the local `world-model-mcp` server is enough or whether they also want the hosted [etch.systems](https://etch.systems) companion for signed audit evidence. Every code path shipped in v0.15.7 continues to work identically. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.16.0.** `world-model demo` now ends with a live notary beat: three sample decisions signed into a real hybrid-signed epoch (Ed25519 + SLH-DSA-SHA2-128f, FIPS 205), then verified against the same `etch-verify` manifest format auditors use, then tampered one byte to prove the chain-integrity check fails live, then restored. Zero signup, zero token, zero network; drops a `world-model-demo-receipt.json` in the current directory and emits a copy-paste `etch.systems/verify#<manifest>` URL. Full version history in [CHANGELOG.md](CHANGELOG.md).
+
+## Try it in 10 seconds
+
+```bash
+pip install -U world-model-mcp && world-model demo
+```
+
+You will see three sample decisions signed into a tamper-evident epoch, then the demo mutates one byte and re-verifies to prove the tamper is detected instantly (INVALID), then restores and re-verifies (VALID again). Offline, no account, no network. A `world-model-demo-receipt.json` lands in your current directory and a shareable `etch.systems/verify#…` URL is printed for anyone to check the same receipt in a browser.
 
 [![PyPI](https://img.shields.io/pypi/v/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
 [![Downloads](https://img.shields.io/pypi/dm/world-model-mcp.svg)](https://pypi.org/project/world-model-mcp/)
@@ -14,6 +24,25 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20834508.svg)](https://doi.org/10.5281/zenodo.20834508)
 
 mcp-name: io.github.SaravananJaichandar/world-model-mcp
+
+---
+
+## FAQ
+
+**What is world-model-mcp?**
+world-model-mcp is persistent memory plus a post-quantum-signed, offline-verifiable audit trail for AI coding agents, exposed as an MCP server the agent queries every turn. It runs entirely local, ships as MIT-licensed Python + optional adapters for 10+ AI coding agents.
+
+**How is it different from Mem0, Letta, and other agent-memory tools?**
+world-model-mcp is the only agent-memory tool that ships a hybrid post-quantum signed audit chain (FIPS 205 Ed25519 + SLH-DSA-SHA2-128f) alongside memory, with an offline reference verifier (`etch-verify`) and dual external anchoring (Sigstore Rekor + Bitcoin OpenTimestamps) available via the hosted `etch.systems` companion. Peer tools (Mem0, Letta, agentmemory) ship memory without a signed audit chain. See the "Compared to" table below for a per-mechanism breakdown.
+
+**Is the audit trail post-quantum secure?**
+Yes. Every closed epoch carries a hybrid signature: Ed25519 (classical) plus SLH-DSA-SHA2-128f (FIPS 205 stateless hash-based post-quantum signature). A future quantum adversary that breaks Ed25519 alone still faces the SLH-DSA signature over the same payload; both signatures must forge for the chain to be forged.
+
+**How do I verify a record offline, with no account?**
+Run `pip install -U world-model-mcp && world-model demo`. The demo signs three sample decisions into a real hybrid-signed epoch, exports the same manifest format the `etch-verify` CLI reads, verifies VALID, mutates one byte to prove tamper detection is live (INVALID), then restores and re-verifies. A `world-model-demo-receipt.json` lands in your current directory and a `etch.systems/verify#…` URL is printed for anyone to check the receipt in a browser. Zero signup, zero network.
+
+**Which AI coding agents does it work with?**
+Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent. Each has a dedicated starter repo under `github.com/SaravananJaichandar/world-model-mcp-<agent>-starter`. The MCP wire format is standard, so any MCP-capable client can consume the same tools.
 
 ---
 
@@ -52,7 +81,7 @@ Source of truth for this table lives in the hosted service repo: [world-model-mc
 
 | Benchmark | Score | Details |
 |---|---|---|
-| [SWE-bench Verified repeat-mistake](https://github.com/SaravananJaichandar/coding-agent-memory-benchmark) | **+10.2 pts** (67.3% → 77.6% on 49 paired instances) | Pre-registered, Claude Code 2.1.177 headless, Zenodo DOI [10.5281/zenodo.21076824](https://doi.org/10.5281/zenodo.21076824). Within-domain +15.0 pts, cross-domain +6.9 pts with zero regressions. Multi-seed appendix documents single-trial upper bound honestly. |
+| [SWE-bench Verified repeat-mistake](https://github.com/SaravananJaichandar/coding-agent-memory-benchmark) | **+10.2 points as a single-trial upper bound** (67.3% → 77.6% on 49 paired instances); the multi-seed mean effect is **+0.24 per instance, 95% CI [0, 0.47]** | Pre-registered, Claude Code 2.1.177 headless, Zenodo DOI [10.5281/zenodo.21076824](https://doi.org/10.5281/zenodo.21076824). Within-domain +15.0 pts, cross-domain +6.9 pts with zero regressions on the single-trial split. |
 | [Contradiction-resolution](benchmarks/contradictions-200/RESULTS.md) | **100.0%** on `auto` strategy | 105 pairs × 19 categories, deterministic (no LLM). Shipped since v0.11.0. |
 | [Coach-Player verification](benchmarks/coach-player/) | **100.0%** exact match | 12 hand-labeled pairs (4 grounded, 4 partial, 4 hallucinated). Layer 3 adversarial verification via independent Coach LLM. Shipped since v0.12.12. |
 
