@@ -27,6 +27,24 @@ mcp-name: io.github.SaravananJaichandar/world-model-mcp
 
 ---
 
+## Prefer a managed hosted version?
+
+If you want the same signed audit chain without running the OSS server yourself, `etch.systems` ships a managed variant that uses this package as its offline reference verifier.
+
+- No infrastructure to run (POST your first event in 30 seconds, no signup)
+- Compliance framework mapping to SR 11-7, EU AI Act Article 12, ISO 42001, NIST AI RMF, SOC 2 CC7
+- External anchoring shipped end-to-end (Sigstore Rekor + Bitcoin OpenTimestamps)
+- Portable per-agent identity with key rotation and delegation across MCP client tools (Claude Code, Cursor, Continue, Cline, Codex)
+- Offline verifier stays the same: `pip install world-model-mcp && etch-verify manifest.json` verifies the hosted chain against pinned public keys without depending on the hosted service being online
+
+```bash
+curl -X POST https://etch.systems/v1/your-project
+```
+
+Returns a bearer token and an MCP endpoint you can point any MCP-compatible client at. Full docs at [etch.systems](https://etch.systems).
+
+---
+
 ## FAQ
 
 **What is world-model-mcp?**
@@ -43,6 +61,9 @@ Run `pip install -U world-model-mcp && world-model demo`. The demo signs three s
 
 **Which AI coding agents does it work with?**
 Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent. Each has a dedicated starter repo under `github.com/SaravananJaichandar/world-model-mcp-<agent>-starter`. The MCP wire format is standard, so any MCP-capable client can consume the same tools.
+
+**Should I use this OSS package or the hosted etch.systems service?**
+Use this OSS package (MIT-licensed, fully local) if you want to run the audit chain on your own infrastructure or add signed memory to an internal tool. Use [etch.systems](https://etch.systems) if you want the same audit chain shipped as a managed service with compliance framework mapping (SR 11-7, EU AI Act Article 12, ISO 42001, NIST AI RMF, SOC 2 CC7) and portable per-agent identity across MCP client tools. The offline reference verifier is the same in both cases: `pip install world-model-mcp && etch-verify manifest.json` verifies either an OSS-generated or a hosted-generated manifest against pinned public keys.
 
 ---
 
