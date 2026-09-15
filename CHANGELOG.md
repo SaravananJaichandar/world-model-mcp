@@ -4,6 +4,13 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.3
+
+- **Metadata refresh. No code changes.** Every code path shipped in v0.16.2 continues to work identically; this release refines package metadata only.
+- **PyPI summary now names both artifacts that ship in this wheel.** Prior summary read "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions", which was accurate for the MCP memory server but silently omitted the `etch-verify` offline audit-chain verifier CLI shipped alongside it under `[project.scripts]`. New summary: "MCP world-model memory server for coding agents; ships the etch-verify offline audit-chain verifier CLI". The verifier CLI was already installed by every prior release; the metadata is now honest about that.
+- **Discoverability keywords added.** `audit-log`, `audit-chain`, `verifier`, `signed-audit`, and `etch-verify` are now in the keyword list alongside the existing `mcp` / `ai` / `code-assistant` / `knowledge-graph` / `claude` set. A searcher looking for an offline audit-chain verifier can now find the package.
+- **No new capability, no new tools, no schema changes.** Bug-fix / security / docs / tests / perf categories only; this release is in the docs category.
+
 ## What's new in v0.16.2
 
 - **CI + test hardening: `WORLD_MODEL_SKIP_NOTARY_BEAT=1` env var opts out of the notary beat.** v0.16.1 fixed the crash on liboqs-without-SLH-DSA builds by catching the RuntimeError, but the `HybridSigner` import inside `_run_notary_beat` still triggered the `oqs` package's first-run liboqs build (60-180 seconds on a fresh HOME). That was enough to push the pre-existing `tests/test_v073_features.py::test_f2_demo_*` subprocess tests past their 240-second cap on some CI runners. v0.16.2 adds an env-var opt-out that short-circuits the beat before any oqs import happens, so integration tests and CI jobs that want a fast `world-model demo` can set `WORLD_MODEL_SKIP_NOTARY_BEAT=1` and skip the beat entirely. Users on the standard install path (env var unset) get the full notary beat unchanged.

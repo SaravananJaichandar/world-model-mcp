@@ -1,14 +1,25 @@
 [project]
 name = "world-model-mcp"
-version = "0.16.2"
-description = "MCP server that builds a world model for codebases to prevent hallucinations, repeated mistakes, and regressions"
+version = "0.16.3"
+description = "MCP world-model memory server for coding agents; ships the etch-verify offline audit-chain verifier CLI"
 authors = [
     {name = "SaravananJaichandar"}
 ]
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
-keywords = ["mcp", "ai", "code-assistant", "knowledge-graph", "claude"]
+keywords = [
+    "mcp",
+    "ai",
+    "code-assistant",
+    "knowledge-graph",
+    "claude",
+    "audit-log",
+    "audit-chain",
+    "verifier",
+    "signed-audit",
+    "etch-verify",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
