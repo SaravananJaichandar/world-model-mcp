@@ -4,6 +4,18 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.4
+
+Verifier maintenance release. Bug fixes to guarantees the docs already made; no new MCP tools, no schema changes, existing manifests keep verifying.
+
+- **Merkle roots are recomputed.** `etch-verify` recomputes every epoch's root from the row hashes it covers and requires epochs to be numbered 1..E and to cover the log from entry 1 with no gap or overlap. Before this, a rewritten entry with the chain hashes recomputed verified clean under the genuine keys.
+- **Key pins.** `--pin-ed25519 sha256:...` and `--pin-slh-dsa sha256:...` fail the verify when the manifest's keys differ, so swapping in an attacker's keys and re-signing is caught. Without pins the report says the keys came from the manifest and prints their fingerprints.
+- **Content rows are required.** Every `event_create` and `annotation_create` entry must have its row in `source_rows` (`event_content_present`, `annotation_content_present`). Before this, deleting a row verified clean.
+- **UNSIGNED verdict.** A manifest with no sealed epoch now ends `VERDICT: UNSIGNED` with exit code 3 instead of `VERDICT: OK`. Entries after the last epoch are reported as unsealed.
+- **Verification no longer depends on liboqs.** Every epoch signature ever produced is SPHINCS+-SHA2-128f-simple (round 3.1). liboqs 0.16 removed that mechanism and its FIPS 205 SLH-DSA rejects these signatures, so `pip install world-model-mcp` on a fresh machine reported genuine evidence as unverifiable. Verification is now pure Python (`world_model_server/sphincs_sha2_128f.py`), checked against the KAT fixture, liboqs 0.15 signatures, and the public demo pack's 40 epochs. liboqs is imported only to sign. Docstrings that called these signatures FIPS 205 are corrected.
+- Not changed: entries or whole epochs removed from the end of a manifest still verify. The v1 manifest format does not commit to where the log ends.
+- One verifier walks either a dict or a streamed file, replacing the two parallel implementations, so the in-memory and streaming verdicts match by construction.
+
 ## What's new in v0.16.3
 
 - **Metadata refresh. No code changes.** Every code path shipped in v0.16.2 continues to work identically; this release refines package metadata only.

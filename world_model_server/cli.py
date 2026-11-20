@@ -66,8 +66,8 @@ async def _run_notary_beat(console_local) -> bool:
         if "SLH-DSA is not available" in str(exc):
             console_local.print(
                 "  [yellow]Skipped[/yellow] — this environment's "
-                "liboqs was built without SLH-DSA (FIPS 205). Install "
-                "liboqs >= 0.14 with SLH-DSA support to run the "
+                "liboqs cannot sign SPHINCS+-SHA2-128f-simple (liboqs "
+                "0.16 removed it). Install liboqs 0.15 to run the "
                 "hybrid-signed notary beat. Everything above still "
                 "works; only the notary beat needs post-quantum "
                 "signing."

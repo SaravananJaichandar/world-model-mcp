@@ -257,7 +257,7 @@ class TestEmptyChainStreamingVerify:
     """A chain with no log entries, no epochs, no source rows should
     still verify OK — matches the in-memory verify path."""
 
-    async def test_empty_chain_verifies_ok(self, tmp_path, monkeypatch):
+    async def test_empty_chain_is_unsigned(self, tmp_path, monkeypatch):
         monkeypatch.setenv("WORLD_MODEL_AUDIT_LOG", "on")
         kg = KnowledgeGraph(str(tmp_path))
         await kg.initialize()
@@ -267,7 +267,8 @@ class TestEmptyChainStreamingVerify:
             kg, str(manifest_path),
         )
         report = etch_verify.verify_manifest_streaming(manifest_path)
-        assert report.ok is True
+        assert report.verdict == "UNSIGNED"
+        assert [c for c in report.checks if not c["ok"]] == []
         assert report.entries_checked == 0
         assert report.epochs_checked == 0
         assert report.annotations_checked == 0

@@ -125,10 +125,12 @@ async def test_concurrent_appends_produce_valid_chain(
             )
 
     # 3. Belt-and-braces: run the offline verifier over the exported
-    #    dump. This is what a real auditor runs. It must PASS.
+    #    dump. This is what a real auditor runs. Every check must pass;
+    #    no epoch closed, so the verdict is UNSIGNED.
     manifest = await audit_dump.export_audit_dump(kg)
     report = etch_verify.verify_manifest(manifest)
-    assert report.ok, (
+    assert report.verdict == "UNSIGNED"
+    assert all(c["ok"] for c in report.checks), (
         f"offline verifier must PASS on a chain produced by "
         f"concurrent writes; failures: "
         f"{[c for c in report.checks if not c['ok']]}"

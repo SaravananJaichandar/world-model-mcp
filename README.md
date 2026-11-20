@@ -2,11 +2,11 @@
 
 **Persistent memory + optional signed audit for AI coding agents.**
 
-> world-model-mcp is persistent memory plus a post-quantum-signed, offline-verifiable audit trail for AI coding agents (FIPS 205 hybrid Ed25519 + SLH-DSA), MIT-licensed and fully local.
+> world-model-mcp is persistent memory plus a post-quantum-signed, offline-verifiable audit trail for AI coding agents (hybrid Ed25519 + SPHINCS+, the hash-based scheme FIPS 205 standardized as SLH-DSA), MIT-licensed and fully local.
 
-`world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is signed with FIPS 205 hybrid Ed25519 + SLH-DSA, verifiable offline forever. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
+`world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is hash-chained and sealed into epochs signed with hybrid Ed25519 + SPHINCS+, verifiable offline. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.16.3.** Metadata refresh. No code changes. The PyPI summary and keyword set now name both artifacts that ship in this wheel: the MCP world-model memory server for coding agents, and the `etch-verify` offline audit-chain verifier CLI. Both were already installed by every prior release; the metadata is now honest about that so a searcher looking for an offline audit-chain verifier can find the package. v0.16.2 shipped CI hardening plus the `world-model demo` live notary beat introduced in v0.16.0 (three sample decisions signed into a real hybrid-signed epoch, verified VALID, mutated one byte to prove tamper detection fires live, then restored). Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.16.4.** Verifier maintenance release. `etch-verify` now recomputes every epoch's Merkle root and requires epochs to cover the log with no gap, pins keys with `--pin-ed25519` / `--pin-slh-dsa`, requires a content row for every chained event and annotation, and reports UNSIGNED instead of OK when no epoch is sealed. Verification is now pure Python, so existing signatures verify whatever liboqs is installed. Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Try it in 10 seconds
 
@@ -54,7 +54,7 @@ world-model-mcp is persistent memory plus a post-quantum-signed, offline-verifia
 world-model-mcp is the only agent-memory tool that ships a hybrid post-quantum signed audit chain (FIPS 205 Ed25519 + SLH-DSA-SHA2-128f) alongside memory, with an offline reference verifier (`etch-verify`) and dual external anchoring (Sigstore Rekor + Bitcoin OpenTimestamps) available via the hosted `etch.systems` companion. Peer tools (Mem0, Letta, agentmemory) ship memory without a signed audit chain. See the "Compared to" table below for a per-mechanism breakdown.
 
 **Is the audit trail post-quantum secure?**
-Yes. Every closed epoch carries a hybrid signature: Ed25519 (classical) plus SLH-DSA-SHA2-128f (FIPS 205 stateless hash-based post-quantum signature). A future quantum adversary that breaks Ed25519 alone still faces the SLH-DSA signature over the same payload; both signatures must forge for the chain to be forged.
+Yes. Every closed epoch carries a hybrid signature: Ed25519 (classical) plus SPHINCS+-SHA2-128f-simple, the round 3.1 hash-based post-quantum scheme that FIPS 205 later standardized as SLH-DSA. The signatures use the pre-standard byte format, so a FIPS 205 SLH-DSA implementation will not verify them; `etch-verify` does. A future quantum adversary that breaks Ed25519 alone still faces the SLH-DSA signature over the same payload; both signatures must forge for the chain to be forged.
 
 **How do I verify a record offline, with no account?**
 Run `pip install -U world-model-mcp && world-model demo`. The demo signs three sample decisions into a real hybrid-signed epoch, exports the same manifest format the `etch-verify` CLI reads, verifies VALID, mutates one byte to prove tamper detection is live (INVALID), then restores and re-verifies. A `world-model-demo-receipt.json` lands in your current directory and a `etch.systems/verify#…` URL is printed for anyone to check the receipt in a browser. Zero signup, zero network.
@@ -76,7 +76,7 @@ Source of truth for this table lives in the hosted service repo: [world-model-mc
 | | world-model-mcp (this repo) + Etch (hosted) | Mem0 | Letta | agentmemory | Unicity AOS | Repowise | Trinitite | Caura | FailproofAI |
 |---|---|---|---|---|---|---|---|---|---|
 | Signature scheme | **Ed25519 + SLH-DSA-SHA2-128f (hybrid)** `[own]` | None (encryption at rest only) | None | None | BLAKE3 hash-chain | Deterministic signals (no signing) | Signed + hash-chained (algo not disclosed) | None | None disclosed |
-| Post-quantum ready | **Yes (SLH-DSA, NIST FIPS 205)** `[own]` | No | No | No | No (BLAKE3 hash only) | No | No disclosed | No | No |
+| Post-quantum ready | **Yes (SPHINCS+ round 3.1, pre-standard SLH-DSA)** `[own]` | No | No | No | No (BLAKE3 hash only) | No | No disclosed | No | No |
 | Offline reference verifier | **etch-verify CLI, streaming, ships with PyPI package** `[own]` | No | No | No | Not disclosed | No (SaaS-only) | Browser-based verifier | No | No |
 | Attestation cadence enforcement | **Scheduled systemd timer + on-demand verify** `[own]` | No | No | No | Not disclosed | No | Scheduled attestation runs | No | No |
 | Framework mapping (Article / control IDs) | **EU AI Act Art. 12-15, SOC 2 CC6.6/7.2/7.3, ISO 27001 A.12.4/A.14.2** `[own]` | SOC 2 + HIPAA (badges, no per-control mapping) | Not disclosed | No | Not disclosed | EU AI Act (negative-space claim) | Per-Article citations (EU AI Act, SOC 2, SR 11-7) | SOC 2 in-progress badge | SOC 2 enterprise tier only |
@@ -112,7 +112,7 @@ The SWE-bench number is the load-bearing empirical claim. The other two are inte
 
 ## Testing
 
-**1,494 unit + integration + fuzz tests** across the shipped codebase. Coverage floor gated at 71% / 66% (two-tier for CI runners with and without SLH-DSA in liboqs).
+**1,542 unit + integration + fuzz tests** across the shipped codebase. Coverage floor gated at 71% / 66% (two-tier for CI runners with and without SLH-DSA in liboqs).
 
 ```bash
 # Run tests
@@ -129,7 +129,7 @@ pytest tests/test_fuzz_smoke_verify.py -q
 ```
 
 Selected test suites worth calling out:
-- **FIPS 205 SLH-DSA known-answer tests** (`tests/test_fips_205_slh_dsa_kat.py`): locks parameter sizes for SLH-DSA-SHA2-128f (public key = 32 bytes, secret key = 64 bytes, signature = 17,088 bytes), sign/verify round-trip with wrong-key + wrong-message + mutated-signature rejection, plus a fixed KAT-vector fixture (`tests/fixtures/slh_dsa_kat_vectors.json`) that must verify true forever.
+- **SPHINCS+ known-answer tests** (`tests/test_fips_205_slh_dsa_kat.py`, `tests/test_verify_without_liboqs.py`): genuine prod epochs and fixed vectors verify with liboqs blocked; locks parameter sizes for SPHINCS+-SHA2-128f-simple (public key = 32 bytes, secret key = 64 bytes, signature = 17,088 bytes), sign/verify round-trip with wrong-key + wrong-message + mutated-signature rejection, plus a fixed KAT-vector fixture (`tests/fixtures/slh_dsa_kat_vectors.json`) that must verify true forever.
 - **Streaming verifier byte-parity** (`tests/test_etch_verify_streaming.py`): locks byte-identical output between in-memory and streaming exporters so an auditor hashing the manifest as an artifact of record gets the same `manifest_sha256` regardless of which exporter the operator used.
 - **Contradiction benchmark** (`benchmarks/contradictions-200/`): 105 pairs × 19 categories, deterministic. Locks the `auto` strategy at 100% on every commit.
 
@@ -146,11 +146,32 @@ export WORLD_MODEL_AUDIT_LOG=on
 # then start the world-model-mcp server as normal
 ```
 
-On the first opt-in start, the server creates two new SQLite tables in the existing `audit.db` file (`tamper_evident_log` and `tamper_evident_epochs`) and generates a new hybrid keypair on the first epoch close. Every subsequent event is appended to a SHA-256 Merkle chain. When an epoch closes (default: 1024 events), the chain root gets signed with a hybrid **Ed25519 + SLH-DSA-SHA2-128f** envelope: classical + post-quantum, so a hypothetical break of elliptic-curve cryptography leaves the audit trail intact.
+On the first opt-in start, the server creates two new SQLite tables in the existing `audit.db` file (`tamper_evident_log` and `tamper_evident_epochs`) and generates a new hybrid keypair on the first epoch close. Every subsequent event is appended to a SHA-256 Merkle chain. When an epoch closes (default: 1024 entries, `WORLD_MODEL_AUDIT_LOG_EPOCH_SIZE`), each epoch's Merkle root is signed with a hybrid **Ed25519 + SPHINCS+-SHA2-128f-simple** envelope: classical + post-quantum, so a hypothetical break of elliptic-curve cryptography leaves the audit trail intact.
 
 - **Verifiable offline**, forever. `etch-verify` CLI ships with the PyPI package; auditors run it on their laptop, no network access needed after the initial download.
 - **Signatures prove authorship**, not just order. Hash-chain alternatives can prove nothing was reordered, but cannot prove WHO signed. This chain answers both.
 - **No dashboard, no signup, no external service**. Runs entirely in your process against local SQLite.
+
+### Verifying a manifest
+
+```bash
+etch-verify manifest.json \
+  --pin-ed25519 sha256:<fingerprint> --pin-slh-dsa sha256:<fingerprint> \
+  [--json]
+```
+
+- **Pin the keys.** Without pins the verifier trusts the keys inside the manifest, so a forgery re-signed with its own keys passes. It says so and prints the fingerprints. Get the operator's fingerprints out of band and pass them as pins.
+- **Merkle roots and coverage.** Every epoch root is recomputed from the row hashes it covers, and epochs must cover the log from entry 1 with no gap or overlap.
+- **Not detected: truncation.** Entries or whole epochs removed from the end of a manifest still verify. The v1 manifest format does not commit to where the log ends.
+- **Content.** Every event and annotation row must match the hash its log entry committed, and every `event_create` / `annotation_create` entry must have its row.
+- **No liboqs needed.** SPHINCS+ verification is pure Python, so the result does not depend on the installed liboqs version. Signing still needs liboqs 0.15 (0.16 removed SPHINCS+).
+
+| Verdict | Exit | Meaning |
+|---|---|---|
+| `OK` | 0 | Every check passed and at least one epoch is signed. Entries after the last epoch are reported as unsealed. |
+| `FAILED` | 1 | A check failed; the report names it. |
+| (none) | 2 | The manifest could not be read or is not valid JSON. |
+| `UNSIGNED` | 3 | Every check passed but no epoch is sealed yet, so nothing carries an epoch signature. |
 
 Full write-up in [docs/AUDIT_LOG.md](docs/AUDIT_LOG.md).
 

@@ -11,15 +11,13 @@ even if a future quantum attack breaks Ed25519, the SLH-DSA half stands.
 - **Ed25519**: FIPS 186-5 (2023) approved. Fast, small (64-byte
   signatures), decades of classical scrutiny. cryptography.hazmat
   implementation used verbatim.
-- **SLH-DSA-SHA2-128f-simple**: FIPS 205 (2024) approved, round-3-finalized
-  variant. Hash-based post-quantum signatures with conservative security
-  assumptions (only breaks if SHA-256 breaks). Fast variant: ~17 KB
-  signatures, 128-bit classical security. Via liboqs-python — the same
-  PQClean C reference implementation that the `pqclean` npm package
-  reads, so the TypeScript verifier cross-verifies these signatures
-  byte-for-byte.
-
-Both are FIPS-approved. Compliance-track buyers get both boxes checked.
+- **SPHINCS+-SHA2-128f-simple (round 3.1)**: the hash-based
+  post-quantum scheme that FIPS 205 later standardized as SLH-DSA, in its
+  pre-standard form. Signing goes through liboqs under the mechanism name
+  "SPHINCS+-SHA2-128f-simple". FIPS 205 SLH-DSA changed the byte format,
+  so these signatures do not verify under an SLH-DSA implementation.
+  Verification uses the pure-Python `sphincs_sha2_128f` module, so a
+  verifier needs no liboqs at all.
 
 ## Serialization format
 
@@ -54,80 +52,59 @@ License: MIT.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
-import os
-from typing import Optional
 
-import oqs
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 
-# liboqs algorithm name for the FIPS 205 SLH-DSA parameter set we sign
-# with. Different liboqs versions use different names for the SAME
-# underlying primitive:
-#
-#   liboqs >= 0.14 (post FIPS 205, Aug 2024): "SLH-DSA-SHA2-128f"
-#   liboqs <  0.14                          : "SPHINCS+-SHA2-128f-simple"
-#
-# Existing signatures under either name verify under the other because
-# the wire format is identical — only the mechanism identifier changed
-# in liboqs when SPHINCS+ was standardized as SLH-DSA. We resolve at
-# import time by probing which name this liboqs build enables, so the
-# code runs against both older prod boxes and newer CI runners without
-# per-environment forks.
-_SLH_DSA_ALG_FIPS205 = "SLH-DSA-SHA2-128f"
+from . import sphincs_sha2_128f
+
+# liboqs mechanism name for the scheme every existing signature uses.
+# liboqs 0.16 removed it; its FIPS 205 SLH-DSA is a different byte
+# format, so signing never falls back to it.
 _SLH_DSA_ALG_LEGACY = "SPHINCS+-SHA2-128f-simple"
 
 
-def _resolve_slh_dsa_alg() -> Optional[str]:
-    """Return the mechanism name this liboqs installation accepts, or
-    None if neither the FIPS 205 name nor the legacy SPHINCS+ name
-    is enabled. Returning None lets the module import successfully
-    in environments without a SLH-DSA-enabled liboqs — CI runners
-    whose bundled liboqs-python wheel omits the mechanism, for
-    example. Any actual signing call raises SLH_DSA_UNAVAILABLE_ERR
-    with the enabled-mechanisms list so the failure is unambiguous.
-    """
-    enabled = set(oqs.get_enabled_sig_mechanisms())
-    if _SLH_DSA_ALG_FIPS205 in enabled:
-        return _SLH_DSA_ALG_FIPS205
-    if _SLH_DSA_ALG_LEGACY in enabled:
-        return _SLH_DSA_ALG_LEGACY
-    return None
+def _oqs():
+    # Imported on first signing use only. liboqs-python builds liboqs
+    # on import when it finds none, so verification must never reach
+    # this.
+    import oqs
+
+    return oqs
 
 
-_SLH_DSA_ALG: Optional[str] = _resolve_slh_dsa_alg()
+@functools.cache
+def _resolve_slh_dsa_alg() -> str | None:
+    """Return the liboqs mechanism name to sign with, or None when this
+    liboqs build cannot sign SPHINCS+-SHA2-128f-simple."""
+    enabled = _oqs().get_enabled_sig_mechanisms()
+    return _SLH_DSA_ALG_LEGACY if _SLH_DSA_ALG_LEGACY in enabled else None
 
-# Truthy iff this liboqs build enables SLH-DSA under either name.
-# External callers (tests, conftest fixtures) read this to decide
-# whether to skip chain-signing coverage.
-SLH_DSA_AVAILABLE: bool = _SLH_DSA_ALG is not None
+
+def __getattr__(name: str):
+    # SLH_DSA_AVAILABLE answers "can this environment SIGN". It loads
+    # liboqs, so it is resolved lazily rather than at import.
+    if name == "SLH_DSA_AVAILABLE":
+        return _resolve_slh_dsa_alg() is not None
+    if name == "_SLH_DSA_ALG":
+        return _resolve_slh_dsa_alg()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def _slh_dsa_unavailable_message() -> str:
-    """Human-readable diagnostic used by every SLH-DSA-touching code
-    path when the mechanism isn't enabled in this liboqs build."""
-    enabled = sorted(oqs.get_enabled_sig_mechanisms())
+    """Diagnostic for signing in an environment whose liboqs lacks the
+    mechanism."""
+    enabled = sorted(_oqs().get_enabled_sig_mechanisms())
     preview = enabled[:5]
     return (
-        f"SLH-DSA is not available in this liboqs build. Neither "
-        f"{_SLH_DSA_ALG_FIPS205!r} nor {_SLH_DSA_ALG_LEGACY!r} is "
-        f"enabled. This environment cannot sign or verify audit-chain "
-        f"epochs. Install a liboqs build with SLH-DSA support "
-        f"(liboqs >= 0.14 from source, or a distro package that "
-        f"includes it). Enabled here: {preview}... ({len(enabled)} total)"
+        f"SLH-DSA is not available in this liboqs build for signing. "
+        f"{_SLH_DSA_ALG_LEGACY!r} is not enabled, so this environment cannot sign audit-chain epochs "
+        f"(verification does not need liboqs). Install liboqs 0.15 with "
+        f"liboqs-python 0.15. Enabled here: {preview}... ({len(enabled)} total)"
     )
-
-
-# Cached algorithm parameter sizes. Set from liboqs at import when
-# SLH-DSA IS enabled; None when it isn't. Downstream code that
-# validates key/signature lengths must guard on SLH_DSA_AVAILABLE
-# before dereferencing these — see _require_slh_dsa() helper.
-if SLH_DSA_AVAILABLE:
-    _slh_probe = oqs.Signature(_SLH_DSA_ALG)
-else:
-    _slh_probe = None
 
 
 # ---------------------------------------------------------------------------
@@ -141,26 +118,16 @@ SIGNATURE_ENVELOPE_VERSION = 1
 # breaking change to the audit-log message layout ever ships.
 DOMAIN_AUDIT_LOG_EPOCH_ROOT = b"world-model-mcp/audit-log/epoch-root/v1"
 
-# SLH-DSA-SHA2-128f parameter sizes (from liboqs). Documented here so
-# verifiers can validate lengths before decoding. None when the
-# mechanism isn't enabled — every consumer must guard on
-# SLH_DSA_AVAILABLE before dereferencing.
-SLH_DSA_PUBLIC_KEY_BYTES = (
-    _slh_probe.details["length_public_key"] if _slh_probe else None
-)
-SLH_DSA_SECRET_KEY_BYTES = (
-    _slh_probe.details["length_secret_key"] if _slh_probe else None
-)
-SLH_DSA_SIGNATURE_BYTES = (
-    _slh_probe.details["length_signature"] if _slh_probe else None
-)
+SLH_DSA_PUBLIC_KEY_BYTES = sphincs_sha2_128f.PUBLIC_KEY_BYTES
+SLH_DSA_SECRET_KEY_BYTES = sphincs_sha2_128f.SECRET_KEY_BYTES
+SLH_DSA_SIGNATURE_BYTES = sphincs_sha2_128f.SIGNATURE_BYTES
 
 
 def _require_slh_dsa() -> None:
     """Guard called by every SLH-DSA-touching function. Raises a
     clear error at USE time so the environment problem doesn't
     show up as a subtle type error elsewhere."""
-    if not SLH_DSA_AVAILABLE:
+    if _resolve_slh_dsa_alg() is None:
         raise RuntimeError(_slh_dsa_unavailable_message())
 
 
@@ -259,7 +226,7 @@ def verify_ed25519(
 
 
 # ---------------------------------------------------------------------------
-# SLH-DSA half (SLH-DSA-SHA2-128f per FIPS 205)
+# SLH-DSA half (SPHINCS+-SHA2-128f-simple, round 3.1)
 # ---------------------------------------------------------------------------
 
 
@@ -267,23 +234,14 @@ class SlhDsaSigner:
     """
     Domain-separated SLH-DSA-SHA2-128f-simple signer.
 
-    Uses liboqs-python (bindings to the canonical liboqs C library), which
-    implements the round-3-finalized `simple` variant that PQClean ships.
-    That's the same source pqclean npm reads, so the TypeScript verifier
-    cross-verifies these signatures byte-for-byte.
+    Signs through liboqs-python with the round 3.1 `simple` variant that
+    PQClean ships, which liboqs 0.15 and earlier enable.
 
     Signature size: 17 KB. Not observable in end-to-end latency for
     epoch-close operations, but visible in the signature envelope —
     verifiers must be prepared for larger payloads than Ed25519's 64 bytes.
 
-    Requires liboqs installed as a system library. On macOS:
-      brew install liboqs
-    On Debian/Ubuntu:
-      apt install liboqs-dev
-
-    liboqs is the canonical PQC reference library, used by Cloudflare,
-    AWS, and OpenSSL's PQC support. Compliance-track security teams already
-    know it.
+    Signing requires liboqs 0.15 or earlier; verification does not.
     """
 
     def __init__(
@@ -312,7 +270,7 @@ class SlhDsaSigner:
         _require_slh_dsa()
         # liboqs generates the keypair; we extract public + secret bytes
         # and store them for reuse via the `sign` method below.
-        signer = oqs.Signature(_SLH_DSA_ALG)
+        signer = _oqs().Signature(_resolve_slh_dsa_alg())
         public_key = signer.generate_keypair()
         secret_key = signer.export_secret_key()
         return cls(public_key=public_key, secret_key=secret_key, domain=domain)
@@ -322,7 +280,7 @@ class SlhDsaSigner:
         # Import the secret key into a fresh oqs.Signature instance and
         # sign. liboqs binds the secret key to the signer object at import
         # time; each sign() call is a stateless operation over the bound key.
-        signer = oqs.Signature(_SLH_DSA_ALG, self._secret_key)
+        signer = _oqs().Signature(_resolve_slh_dsa_alg(), self._secret_key)
         return signer.sign(domain_separate(self._domain, message))
 
     def public_key_bytes(self) -> bytes:
@@ -339,38 +297,15 @@ def verify_slh_dsa(
     domain: bytes = DOMAIN_AUDIT_LOG_EPOCH_ROOT,
 ) -> bool:
     """
-    Verify an SLH-DSA-SHA2-128f-simple signature over the domain-separated
-    message.
+    Verify a SPHINCS+-SHA2-128f-simple signature over the domain-separated
+    message. Returns False on any malformed input.
 
-    Returns False on any verification error, including malformed input
-    (wrong-length signature, wrong-length public key). Rejects up front
-    to avoid liboqs-internal errors on shape mismatches.
-
-    RAISES RuntimeError if SLH-DSA is not available in this liboqs
-    build. This is a deliberate compliance choice: an environment
-    that CANNOT verify a signature is not the same as one where the
-    signature is verified as invalid. Returning False in both cases
-    would silently reclassify an "unverifiable in this environment"
-    result as "verified as tampered" — an auditor running etch-verify
-    on a laptop with a broken liboqs would see a chain-integrity FAIL
-    that looks like real tamper. Raising forces the caller (etch-verify
-    CLI, verify_hybrid, any downstream integration) to distinguish
-    the two outcomes explicitly. See v0.15.3 release notes for the
-    reasoning trail — this closes a semantic drift in v0.15.2.
+    Pure Python (`sphincs_sha2_128f`), so the answer does not depend on
+    which liboqs, if any, is installed.
     """
-    if not SLH_DSA_AVAILABLE:
-        raise RuntimeError(_slh_dsa_unavailable_message())
-    if len(signature) != SLH_DSA_SIGNATURE_BYTES:
-        return False
-    if len(public_key_bytes) != SLH_DSA_PUBLIC_KEY_BYTES:
-        return False
-    try:
-        verifier = oqs.Signature(_SLH_DSA_ALG)
-        return verifier.verify(
-            domain_separate(domain, message), signature, public_key_bytes
-        )
-    except Exception:
-        return False
+    return sphincs_sha2_128f.verify(
+        domain_separate(domain, message), signature, public_key_bytes
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -452,12 +387,6 @@ def verify_hybrid(
     Either failure invalidates the whole envelope. This is the whole point
     of the hybrid construction.
 
-    Raises RuntimeError if SLH-DSA is not available in this liboqs
-    build (propagated from verify_slh_dsa). Callers — etch-verify CLI,
-    tamper_evident chain verification, downstream integrations — must
-    surface that error to the operator rather than treat it as
-    "verification failed." A tool that cannot verify is not evidence
-    that the signature is invalid; see v0.15.3 release notes.
     """
     if envelope.get("version") != SIGNATURE_ENVELOPE_VERSION:
         return False

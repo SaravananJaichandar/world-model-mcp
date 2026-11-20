@@ -1,6 +1,6 @@
 # Tamper-evident audit log (v0.13)
 
-world-model-mcp v0.13 ships an opt-in tamper-evident audit log. Every fact, constraint, event, and decision that the knowledge graph persists is appended to an append-only, hash-chained log. Every 1024 entries (default), an epoch closes: a Merkle tree over the epoch's entries is signed with a hybrid Ed25519 + SLH-DSA-SHA2-128f signature and the root is persisted. A compliance auditor can then independently verify that a specific fact was recorded in a signed epoch — without trusting the operator running the server.
+world-model-mcp v0.13 ships an opt-in tamper-evident audit log. Every fact, constraint, event, and decision that the knowledge graph persists is appended to an append-only, hash-chained log. Every 1024 entries (default), an epoch closes: a Merkle tree over the epoch's entries is signed with a hybrid Ed25519 + SPHINCS+-SHA2-128f-simple signature and the root is persisted. A compliance auditor can then independently verify that a specific fact was recorded in a signed epoch, without trusting the operator running the server.
 
 The design targets one specific customer segment: **regulated engineering deployments where the audit trail must be cryptographically verifiable** (fintech, healthtech, defense, insurance, gov contractors under SOC2, HIPAA, or FISMA).
 
@@ -191,7 +191,7 @@ Storage is not the constraint. If it ever becomes one, epoch pruning (retain the
 
 **Signature primitives: Ed25519 + SLH-DSA-SHA2-128f hybrid** — both required for verification. Reasons:
 - Ed25519: FIPS 186-5 (2023). Fast, small (64-byte signatures), decades of classical scrutiny. Via `cryptography.hazmat`.
-- SLH-DSA-SHA2-128f-simple: FIPS 205 (2024). Post-quantum, hash-based security assumptions, 17 KB signatures. Via `liboqs-python` (bindings to the canonical liboqs C library, which Cloudflare, AWS, and OpenSSL's PQC support all depend on — compliance teams have already vetted it). Requires liboqs installed as a system dependency: `brew install liboqs` on macOS, `apt install liboqs-dev` on Debian/Ubuntu. The TypeScript reference verifier reads the same PQClean C reference implementation via `pqclean` npm, so signatures cross-verify byte-for-byte across languages.
+- SPHINCS+-SHA2-128f-simple (round 3.1): the hash-based post-quantum scheme FIPS 205 later standardized as SLH-DSA, in its pre-standard byte format, so a FIPS 205 SLH-DSA implementation does not verify these signatures. 17 KB signatures. Signed via `liboqs-python` with liboqs 0.15 (liboqs 0.16 removed the mechanism). Verified in pure Python by `world_model_server/sphincs_sha2_128f.py`, so verifiers need no liboqs.
 - Hybrid means BOTH signatures must verify. A future quantum attack that breaks Ed25519 still leaves SLH-DSA standing; a hash-function break that compromises SLH-DSA still leaves Ed25519 standing.
 
 **Merkle tree: RFC 6962** — leaf hash is `SHA-256(0x00 || data)`, internal node is `SHA-256(0x01 || left || right)`. Same construction Certificate Transparency uses. Auditors already know it; external verifiers can port existing tooling.

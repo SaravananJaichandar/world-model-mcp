@@ -90,11 +90,8 @@ class TestFIPS205MechanismName:
     def test_slh_dsa_available(self):
         assert hs.SLH_DSA_AVAILABLE is True
 
-    def test_resolved_mechanism_is_one_of_the_two_accepted_names(self):
-        assert hs._SLH_DSA_ALG in (
-            hs._SLH_DSA_ALG_FIPS205,
-            hs._SLH_DSA_ALG_LEGACY,
-        )
+    def test_signs_with_the_round_3_mechanism(self):
+        assert hs._SLH_DSA_ALG == "SPHINCS+-SHA2-128f-simple"
 
 
 class TestFIPS205RoundTrip:
