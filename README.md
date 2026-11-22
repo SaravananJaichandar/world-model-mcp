@@ -6,7 +6,7 @@
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is hash-chained and sealed into epochs signed with hybrid Ed25519 + SPHINCS+, verifiable offline. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.16.4.** Verifier maintenance release. `etch-verify` now recomputes every epoch's Merkle root and requires epochs to cover the log with no gap, pins keys with `--pin-ed25519` / `--pin-slh-dsa`, requires a content row for every chained event and annotation, and reports UNSIGNED instead of OK when no epoch is sealed. Verification is now pure Python, so existing signatures verify whatever liboqs is installed. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.16.5.** Documentation release, no code path changes. `etch-verify --help` now says which package verifies which file, and the audit-chain section documents how timestamps are recorded on hosts not set to UTC. Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Try it in 10 seconds
 
@@ -164,6 +164,8 @@ etch-verify manifest.json \
 - **Merkle roots and coverage.** Every epoch root is recomputed from the row hashes it covers, and epochs must cover the log from entry 1 with no gap or overlap.
 - **Not detected: truncation.** Entries or whole epochs removed from the end of a manifest still verify. The v1 manifest format does not commit to where the log ends.
 - **Content.** Every event and annotation row must match the hash its log entry committed, and every `event_create` / `annotation_create` entry must have its row.
+- **Which command.** `etch-verify` (this package) checks a world-model-mcp manifest. An Etch hosted-chain export (`etch-chain.json`) is checked by `etch-verify-chain` from the separate `etch-verify` package on PyPI.
+- **Timestamps.** The chain's own entry and epoch times are UTC. The `timestamp` column of `events.db` is the server's local time without an offset, and it is not part of the chained payload. On a host whose clock is not set to UTC, run the server with `TZ=UTC` if event times must be read as UTC.
 - **No liboqs needed.** SPHINCS+ verification is pure Python, so the result does not depend on the installed liboqs version. Signing still needs liboqs 0.15 (0.16 removed SPHINCS+).
 
 | Verdict | Exit | Meaning |

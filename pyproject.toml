@@ -1,6 +1,6 @@
 [project]
 name = "world-model-mcp"
-version = "0.16.4"
+version = "0.16.5"
 description = "MCP world-model memory server for coding agents; ships the etch-verify offline audit-chain verifier CLI"
 authors = [
     {name = "SaravananJaichandar"}

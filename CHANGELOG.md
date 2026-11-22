@@ -4,6 +4,13 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.5
+
+Documentation release. No code path changes, no schema changes, existing manifests keep verifying.
+
+- **Which command verifies what.** `etch-verify --help` now says that it checks a world-model-mcp manifest, and that an Etch hosted-chain export is checked by `etch-verify-chain` from the separate `etch-verify` package.
+- **Timestamps documented.** The chain's entry and epoch times are UTC. The `timestamp` column of `events.db` is the server's local time without an offset and is not chained. The README now says so and suggests `TZ=UTC` on hosts not set to UTC. Storing event times with an offset is left for a later release, because existing rows are naive and the read paths compare them as naive values.
+
 ## What's new in v0.16.4
 
 Verifier maintenance release. Bug fixes to guarantees the docs already made; no new MCP tools, no schema changes, existing manifests keep verifying.

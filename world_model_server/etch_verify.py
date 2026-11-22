@@ -552,6 +552,12 @@ def main(argv: list[str] | None = None) -> int:
             "Offline reference verifier for world-model-mcp audit "
             "chain dumps (v1 manifest format)."
         ),
+        epilog=(
+            "This command checks a world-model-mcp manifest. To verify an "
+            "Etch hosted-chain export (etch-chain.json), install the "
+            "separate etch-verify package from PyPI and run "
+            "etch-verify-chain."
+        ),
     )
     parser.add_argument(
         "manifest",
