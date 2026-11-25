@@ -6,7 +6,7 @@
 
 `world-model-mcp` ships a local SQLite knowledge graph your agent queries every turn: hallucinations become verifiable, corrections stick across sessions, and regressions get caught before they land. Flip on the audit chain and every event is hash-chained and sealed into epochs signed with hybrid Ed25519 + SPHINCS+, verifiable offline. MIT-licensed, runs entirely local, works with 10+ AI coding agents including Claude Code, Cursor, Codex, Continue, Cline, Windsurf, GitHub Copilot Chat, pi, OpenClaw, and Hermes Agent.
 
-> **Latest: v0.16.5.** Documentation release, no code path changes. `etch-verify --help` now says which package verifies which file, and the audit-chain section documents how timestamps are recorded on hosts not set to UTC. Full version history in [CHANGELOG.md](CHANGELOG.md).
+> **Latest: v0.16.6.** Security maintenance release. Requires `mcp` 1.30 or later, which fixes five advisories in the MCP library, including unbounded sessions on the HTTP transport. No schema or manifest changes. Full version history in [CHANGELOG.md](CHANGELOG.md).
 
 ## Try it in 10 seconds
 

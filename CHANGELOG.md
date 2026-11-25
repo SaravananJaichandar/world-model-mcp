@@ -4,6 +4,13 @@ Full version history for `world-model-mcp` from v0.7.0 onward.
 
 For the current release, install instructions, and positioning, see [README.md](README.md).
 
+## What's new in v0.16.6
+
+Security maintenance release. No new MCP tools, no schema changes, existing manifests keep verifying.
+
+- **`mcp` 1.30 or later is required** (was `<1.29.0`). It fixes GHSA-84m7-p3x7-pcfv (unbounded HTTP sessions), GHSA-w4fh-qvv9-3v23, GHSA-qx49-fqc8-xw99, GHSA-5h93-6whr-6q8j and GHSA-rwrf-2pqf-9j8j. `mcp` 2.x is still excluded because it removed the tool-registration API this server uses. The old note that 1.29.0 had removed it was wrong.
+- **HTTP transport limits.** A session with no requests for 24 hours is closed and its id then answers 404; the client opens a new one. Requests over 4 MiB get 413 and at most 10,000 sessions are open at once, which are the library's defaults. The stdio transport is unchanged.
+
 ## What's new in v0.16.5
 
 Documentation release. No code path changes, no schema changes, existing manifests keep verifying.

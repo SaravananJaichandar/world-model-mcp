@@ -937,6 +937,10 @@ async def _run_http(server) -> None:
         app=server,
         event_store=None,  # in-memory; tunnel front-end is responsible for durability
         stateless=False,
+        # The library's 30 minute default would end the session of a client
+        # that records rarely and does not reconnect on 404. A day still
+        # bounds abandoned sessions, along with the library's session cap.
+        session_idle_timeout=24 * 60 * 60,
     )
 
     async def mcp_asgi(scope: Scope, receive: Receive, send: Send) -> None:
